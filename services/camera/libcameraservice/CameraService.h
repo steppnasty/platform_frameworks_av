@@ -107,6 +107,7 @@ private:
         friend class CameraService;
                                 Client(const sp<CameraService>& cameraService,
                                        const sp<ICameraClient>& cameraClient,
+                                       const sp<CameraHardwareInterface>& hardware,
                                        int cameraId,
                                        int clientPid);
                                 ~Client();
