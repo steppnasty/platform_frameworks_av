@@ -321,6 +321,7 @@ CameraService::Client::Client(const sp<CameraService>& cameraService,
     // Callback is disabled by default
     mPreviewCallbackFlag = FRAME_CALLBACK_FLAG_NOOP;
     mOrientation = 0;
+    mOrientationChanged = false;
     mPlayShutterSound = true;
     cameraService->setCameraBusy(cameraId);
     cameraService->loadSound();
@@ -492,6 +493,7 @@ status_t CameraService::Client::setPreviewDisplay(const sp<Surface>& surface) {
             // Force the destruction of any previous overlay
             sp<Overlay> dummy;
             mHardware->setOverlay(dummy);
+            mOverlayRef = 0;
         }
     }
     if (surface != 0) {
@@ -519,11 +521,12 @@ status_t CameraService::Client::setOverlay() {
     CameraParameters params(mHardware->getParameters());
     params.getPreviewSize(&w, &h);
 
-    if (w != mOverlayW || h != mOverlayH) {
+    if (w != mOverlayW || h != mOverlayH || mOrientationChanged) {
         // Force the destruction of any previous overlay
         sp<Overlay> dummy;
         mHardware->setOverlay(dummy);
         mOverlayRef = 0;
+        mOrientationChanged = false;
     }
 
     status_t result = NO_ERROR;
@@ -803,6 +806,7 @@ status_t CameraService::Client::enableShutterSound(bool enable) {
 
 status_t CameraService::Client::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2) {
     LOG1("sendCommand (pid %d)", getCallingPid());
+    int orientation;
     Mutex::Autolock lock(mLock);
     status_t result = checkPidAndHardware();
     if (result != NO_ERROR) return result;
@@ -814,19 +818,23 @@ status_t CameraService::Client::sendCommand(int32_t cmd, int32_t arg1, int32_t a
         }
         switch (arg1) {
             case 0:
-                mOrientation = ISurface::BufferHeap::ROT_0;
+                orientation = ISurface::BufferHeap::ROT_0;
                 break;
             case 90:
-                mOrientation = ISurface::BufferHeap::ROT_90;
+                orientation = ISurface::BufferHeap::ROT_90;
                 break;
             case 180:
-                mOrientation = ISurface::BufferHeap::ROT_180;
+                orientation = ISurface::BufferHeap::ROT_180;
                 break;
             case 270:
-                mOrientation = ISurface::BufferHeap::ROT_270;
+                orientation = ISurface::BufferHeap::ROT_270;
                 break;
             default:
                 return BAD_VALUE;
+        }
+        if (mOrientation != orientation) {
+            mOrientation = orientation;
+            if (mOverlayRef != 0) mOrientationChanged = true;
         }
         return OK;
     } else if (cmd == CAMERA_CMD_ENABLE_SHUTTER_SOUND) {
