@@ -473,15 +473,15 @@ status_t CameraService::Client::setPreviewDisplay(const sp<Surface>& surface) {
     result = NO_ERROR;
 
     // return if no change in surface.
-    // asBinder() is safe on NULL (returns NULL)
-    if (getISurface(surface)->asBinder() == mSurface) {
+    sp<IBinder> binder(surface != 0 ? surface->asBinder() : 0);
+    if (binder == mSurface) {
         return result;
     }
 
     if (mSurface != 0) {
         LOG1("clearing old preview surface %p", mSurface.get());
     }
-    mSurface = getISurface(surface)->asBinder();
+    mSurface = binder;
     mPreviewWindow = surface;
 
     // If preview has been already started, register preview
@@ -1240,14 +1240,6 @@ status_t CameraService::dump(int fd, const Vector<String16>& args) {
         }
     }
     return NO_ERROR;
-}
-
-sp<ISurface> CameraService::getISurface(const sp<Surface>& surface) {
-    if (surface != 0) {
-        return surface->getISurface();
-    } else {
-        return sp<ISurface>(0);
-    }
 }
 
 }; // namespace android
