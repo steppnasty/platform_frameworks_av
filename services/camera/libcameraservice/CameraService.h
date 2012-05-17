@@ -32,7 +32,6 @@ extern volatile int32_t gLogLevel;
 
 class MemoryHeapBase;
 class MediaPlayer;
-class CameraHardwareInterface;
 
 class CameraService :
     public BinderService<CameraService>,
