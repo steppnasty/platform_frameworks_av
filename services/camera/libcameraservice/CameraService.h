@@ -109,6 +109,8 @@ public:
             return mCameraClient;
         }
 
+        virtual status_t initialize(camera_module_t *module) = 0;
+
         virtual status_t dump(int fd, const Vector<String16>& args) = 0;
 
     protected:
