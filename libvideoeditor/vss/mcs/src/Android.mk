@@ -33,17 +33,17 @@ LOCAL_SRC_FILES:=          \
 
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_SHARED_LIBRARIES := libcutils libutils
-
-LOCAL_STATIC_LIBRARIES := \
-    libvideoeditor_osal
+LOCAL_SHARED_LIBRARIES := \
+    libcutils \
+    libutils \
+    libvideoeditor_osal \
 
 LOCAL_C_INCLUDES += \
     $(TOP)/frameworks/av/libvideoeditor/osal/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/mcs/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/common/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/stagefrightshells/inc \
-    $(TOP)/frameworks/base/include/media/stagefright/openmax
+    $(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_SHARED_LIBRARIES += libdl
 

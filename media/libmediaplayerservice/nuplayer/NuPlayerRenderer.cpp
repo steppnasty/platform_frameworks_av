@@ -47,9 +47,9 @@ NuPlayer::Renderer::Renderer(
       mHasVideo(false),
       mSyncQueues(false),
       mPaused(false),
+      mVideoRenderingStarted(false),
       mLastPositionUpdateUs(-1ll),
-      mVideoLateByUs(0ll),
-      mWasPaused(false) {
+      mVideoLateByUs(0ll) {
 }
 
 NuPlayer::Renderer::~Renderer() {
@@ -61,16 +61,13 @@ void NuPlayer::Renderer::queueBuffer(
         const sp<AMessage> &notifyConsumed) {
     sp<AMessage> msg = new AMessage(kWhatQueueBuffer, id());
     msg->setInt32("audio", static_cast<int32_t>(audio));
-    msg->setObject("buffer", buffer);
+    msg->setBuffer("buffer", buffer);
     msg->setMessage("notifyConsumed", notifyConsumed);
     msg->post();
 }
 
 void NuPlayer::Renderer::queueEOS(bool audio, status_t finalResult) {
     CHECK_NE(finalResult, (status_t)OK);
-
-    if(mSyncQueues)
-      syncQueuesDone();
 
     sp<AMessage> msg = new AMessage(kWhatQueueEOS, id());
     msg->setInt32("audio", static_cast<int32_t>(audio));
@@ -100,7 +97,6 @@ void NuPlayer::Renderer::signalTimeDiscontinuity() {
     CHECK(mVideoQueue.empty());
     mAnchorTimeMediaUs = -1;
     mAnchorTimeRealUs = -1;
-    mWasPaused = false;
     mSyncQueues = mHasAudio && mHasVideo;
 }
 
@@ -223,19 +219,6 @@ void NuPlayer::Renderer::signalAudioSinkChanged() {
 }
 
 bool NuPlayer::Renderer::onDrainAudioQueue() {
-    //Check for EOS before retrieving position from audiosink
-    if(!mAudioQueue.empty()) {
-        QueueEntry *entry = &*mAudioQueue.begin();
-
-        if (entry->mBuffer == NULL) {
-            // EOS
-            notifyEOS(true /* audio */, entry->mFinalResult);
-            mAudioQueue.erase(mAudioQueue.begin());
-            entry = NULL;
-            return false;
-        }
-    }
-
     uint32_t numFramesPlayed;
     if (mAudioSink->getPosition(&numFramesPlayed) != OK) {
         return false;
@@ -352,13 +335,6 @@ void NuPlayer::Renderer::postDrainVideoQueue() {
                 mAnchorTimeRealUs = ALooper::GetNowUs();
             }
         } else {
-            if ( (!mHasAudio && mHasVideo) && (mWasPaused == true))
-            {
-               mAnchorTimeMediaUs = mediaTimeUs;
-               mAnchorTimeRealUs = ALooper::GetNowUs();
-               mWasPaused = false;
-            }
-
             int64_t realTimeUs =
                 (mediaTimeUs - mAnchorTimeMediaUs) + mAnchorTimeRealUs;
 
@@ -401,7 +377,8 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
     bool tooLate = (mVideoLateByUs > 40000);
 
     if (tooLate) {
-        ALOGV("video late by %lld us (%.2f secs)", mVideoLateByUs, mVideoLateByUs / 1E6);
+        ALOGV("video late by %lld us (%.2f secs)",
+             mVideoLateByUs, mVideoLateByUs / 1E6);
     } else {
         ALOGV("rendering video at media time %.2f secs", mediaTimeUs / 1E6);
     }
@@ -411,7 +388,18 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
     mVideoQueue.erase(mVideoQueue.begin());
     entry = NULL;
 
+    if (!mVideoRenderingStarted) {
+        mVideoRenderingStarted = true;
+        notifyVideoRenderingStart();
+    }
+
     notifyPosition();
+}
+
+void NuPlayer::Renderer::notifyVideoRenderingStart() {
+    sp<AMessage> notify = mNotify->dup();
+    notify->setInt32("what", kWhatVideoRenderingStart);
+    notify->post();
 }
 
 void NuPlayer::Renderer::notifyEOS(bool audio, status_t finalResult) {
@@ -436,9 +424,8 @@ void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
         return;
     }
 
-    sp<RefBase> obj;
-    CHECK(msg->findObject("buffer", &obj));
-    sp<ABuffer> buffer = static_cast<ABuffer *>(obj.get());
+    sp<ABuffer> buffer;
+    CHECK(msg->findBuffer("buffer", &buffer));
 
     sp<AMessage> notifyConsumed;
     CHECK(msg->findMessage("notifyConsumed", &notifyConsumed));
@@ -616,6 +603,10 @@ bool NuPlayer::Renderer::dropBufferWhileFlushing(
 void NuPlayer::Renderer::onAudioSinkChanged() {
     CHECK(!mDrainAudioQueuePending);
     mNumFramesWritten = 0;
+    uint32_t written;
+    if (mAudioSink->getFramesWritten(&written) == OK) {
+        mNumFramesWritten = written;
+    }
 }
 
 void NuPlayer::Renderer::notifyPosition() {
@@ -654,10 +645,9 @@ void NuPlayer::Renderer::onPause() {
     }
 
     ALOGV("now paused audio queue has %d entries, video has %d entries",
-         mAudioQueue.size(), mVideoQueue.size());
+          mAudioQueue.size(), mVideoQueue.size());
 
     mPaused = true;
-    mWasPaused = true;
 }
 
 void NuPlayer::Renderer::onResume() {

@@ -21,7 +21,7 @@
 #include <binder/IPCThreadState.h>
 #include <media/AudioTrack.h>
 #include <VideoEditorAudioPlayer.h>
-#include <media/stagefright/MediaDebug.h>
+#include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MediaSource.h>
@@ -34,10 +34,26 @@ namespace android {
 
 VideoEditorAudioPlayer::VideoEditorAudioPlayer(
         const sp<MediaPlayerBase::AudioSink> &audioSink,
-        PreviewPlayerBase *observer)
-    : AudioPlayerBase(audioSink, observer) {
+        PreviewPlayer *observer)
+    : mAudioTrack(NULL),
+      mInputBuffer(NULL),
+      mSampleRate(0),
+      mLatencyUs(0),
+      mFrameSize(0),
+      mNumFramesPlayed(0),
+      mPositionTimeMediaUs(-1),
+      mPositionTimeRealUs(-1),
+      mSeeking(false),
+      mReachedEOS(false),
+      mFinalStatus(OK),
+      mStarted(false),
+      mIsFirstBuffer(false),
+      mFirstBufferResult(OK),
+      mFirstBuffer(NULL),
+      mAudioSink(audioSink),
+      mObserver(observer) {
 
-    LOGV("VideoEditorAudioPlayer");
+    ALOGV("Constructor");
     mBGAudioPCMFileHandle = NULL;
     mAudioProcess = NULL;
     mBGAudioPCMFileLength = 0;
@@ -54,7 +70,7 @@ VideoEditorAudioPlayer::VideoEditorAudioPlayer(
 
 VideoEditorAudioPlayer::~VideoEditorAudioPlayer() {
 
-    LOGV("~VideoEditorAudioPlayer");
+    ALOGV("Destructor");
     if (mStarted) {
         reset();
     }
@@ -63,6 +79,184 @@ VideoEditorAudioPlayer::~VideoEditorAudioPlayer() {
         mAudioProcess = NULL;
     }
 }
+
+void VideoEditorAudioPlayer::pause(bool playPendingSamples) {
+    ALOGV("pause: playPendingSamples=%d", playPendingSamples);
+    CHECK(mStarted);
+
+    if (playPendingSamples) {
+        if (mAudioSink.get() != NULL) {
+            mAudioSink->stop();
+        } else {
+            mAudioTrack->stop();
+        }
+    } else {
+        if (mAudioSink.get() != NULL) {
+            mAudioSink->pause();
+        } else {
+            mAudioTrack->pause();
+        }
+    }
+}
+
+void VideoEditorAudioPlayer::clear() {
+    ALOGV("clear");
+    if (!mStarted) {
+        return;
+    }
+
+    if (mAudioSink.get() != NULL) {
+        mAudioSink->stop();
+        mAudioSink->close();
+    } else {
+        mAudioTrack->stop();
+
+        delete mAudioTrack;
+        mAudioTrack = NULL;
+    }
+
+    // Make sure to release any buffer we hold onto so that the
+    // source is able to stop().
+
+    if (mFirstBuffer != NULL) {
+        mFirstBuffer->release();
+        mFirstBuffer = NULL;
+    }
+
+    if (mInputBuffer != NULL) {
+        ALOGV("AudioPlayerBase releasing input buffer.");
+
+        mInputBuffer->release();
+        mInputBuffer = NULL;
+    }
+
+    mSource->stop();
+
+    // The following hack is necessary to ensure that the OMX
+    // component is completely released by the time we may try
+    // to instantiate it again.
+    wp<MediaSource> tmp = mSource;
+    mSource.clear();
+    while (tmp.promote() != NULL) {
+        usleep(1000);
+    }
+    IPCThreadState::self()->flushCommands();
+
+    mNumFramesPlayed = 0;
+    mPositionTimeMediaUs = -1;
+    mPositionTimeRealUs = -1;
+    mSeeking = false;
+    mReachedEOS = false;
+    mFinalStatus = OK;
+    mStarted = false;
+}
+
+void VideoEditorAudioPlayer::resume() {
+    ALOGV("resume");
+
+    AudioMixSettings audioMixSettings;
+
+    // Single audio player is used;
+    // Pass on the audio ducking parameters
+    // which might have changed with new audio source
+    audioMixSettings.lvInDucking_threshold =
+        mAudioMixSettings->uiInDucking_threshold;
+    audioMixSettings.lvInDucking_lowVolume =
+        ((M4OSA_Float)mAudioMixSettings->uiInDucking_lowVolume) / 100.0;
+    audioMixSettings.lvInDucking_enable =
+        mAudioMixSettings->bInDucking_enable;
+    audioMixSettings.lvPTVolLevel =
+        ((M4OSA_Float)mBGAudioStoryBoardCurrentMediaVolumeVal) / 100.0;
+    audioMixSettings.lvBTVolLevel =
+        ((M4OSA_Float)mAudioMixSettings->uiAddVolume) / 100.0;
+    audioMixSettings.lvBTChannelCount = mAudioMixSettings->uiBTChannelCount;
+    audioMixSettings.lvPTChannelCount = mAudioMixSettings->uiNbChannels;
+
+    // Call to Audio mix param setting
+    mAudioProcess->setMixParams(audioMixSettings);
+
+    CHECK(mStarted);
+
+    if (mAudioSink.get() != NULL) {
+        mAudioSink->start();
+    } else {
+        mAudioTrack->start();
+    }
+}
+
+status_t VideoEditorAudioPlayer::seekTo(int64_t time_us) {
+    ALOGV("seekTo: %lld", time_us);
+    Mutex::Autolock autoLock(mLock);
+
+    mSeeking = true;
+    mPositionTimeRealUs = mPositionTimeMediaUs = -1;
+    mReachedEOS = false;
+    mSeekTimeUs = time_us;
+
+    if (mAudioSink != NULL) {
+        mAudioSink->flush();
+    } else {
+        mAudioTrack->flush();
+    }
+
+    return OK;
+}
+
+bool VideoEditorAudioPlayer::isSeeking() {
+    Mutex::Autolock lock(mLock);
+    ALOGV("isSeeking: mSeeking=%d", mSeeking);
+    return mSeeking;
+}
+
+bool VideoEditorAudioPlayer::reachedEOS(status_t *finalStatus) {
+    ALOGV("reachedEOS: status=%d", mFinalStatus);
+    *finalStatus = OK;
+
+    Mutex::Autolock autoLock(mLock);
+    *finalStatus = mFinalStatus;
+    return mReachedEOS;
+}
+
+int64_t VideoEditorAudioPlayer::getRealTimeUs() {
+    Mutex::Autolock autoLock(mLock);
+    return getRealTimeUs_l();
+}
+
+int64_t VideoEditorAudioPlayer::getRealTimeUs_l() {
+    return -mLatencyUs + (mNumFramesPlayed * 1000000) / mSampleRate;
+}
+
+int64_t VideoEditorAudioPlayer::getMediaTimeUs() {
+    ALOGV("getMediaTimeUs");
+    Mutex::Autolock autoLock(mLock);
+
+    if (mPositionTimeMediaUs < 0 || mPositionTimeRealUs < 0) {
+        if (mSeeking) {
+            return mSeekTimeUs;
+        }
+
+        return 0;
+    }
+
+    int64_t realTimeOffset = getRealTimeUs_l() - mPositionTimeRealUs;
+    if (realTimeOffset < 0) {
+        realTimeOffset = 0;
+    }
+
+    return mPositionTimeMediaUs + realTimeOffset;
+}
+
+bool VideoEditorAudioPlayer::getMediaTimeMapping(
+        int64_t *realtime_us, int64_t *mediatime_us) {
+    ALOGV("getMediaTimeMapping");
+    Mutex::Autolock autoLock(mLock);
+
+    *realtime_us = mPositionTimeRealUs;
+    *mediatime_us = mPositionTimeMediaUs;
+
+    return mPositionTimeRealUs != -1 && mPositionTimeMediaUs != -1;
+}
+
 void VideoEditorAudioPlayer::setSource(const sp<MediaSource> &source) {
     Mutex::Autolock autoLock(mLock);
 
@@ -76,7 +270,7 @@ void VideoEditorAudioPlayer::setSource(const sp<MediaSource> &source) {
     }
 
     if (mInputBuffer != NULL) {
-        LOGV("VideoEditorAudioPlayer releasing input buffer.");
+        ALOGV("VideoEditorAudioPlayer releasing input buffer.");
 
         mInputBuffer->release();
         mInputBuffer = NULL;
@@ -96,8 +290,8 @@ sp<MediaSource> VideoEditorAudioPlayer::getSource() {
     return mSource;
 }
 
-void VideoEditorAudioPlayer::setObserver(PreviewPlayerBase *observer) {
-    LOGV("setObserver");
+void VideoEditorAudioPlayer::setObserver(PreviewPlayer *observer) {
+    ALOGV("setObserver");
     //CHECK(!mStarted);
     mObserver = observer;
 }
@@ -106,11 +300,28 @@ bool VideoEditorAudioPlayer::isStarted() {
     return mStarted;
 }
 
+// static
+void VideoEditorAudioPlayer::AudioCallback(int event, void *user, void *info) {
+    static_cast<VideoEditorAudioPlayer *>(user)->AudioCallback(event, info);
+}
+
+
+void VideoEditorAudioPlayer::AudioCallback(int event, void *info) {
+    if (event != AudioTrack::EVENT_MORE_DATA) {
+        return;
+    }
+
+    AudioTrack::Buffer *buffer = (AudioTrack::Buffer *)info;
+    size_t numBytesWritten = fillBuffer(buffer->raw, buffer->size);
+
+    buffer->size = numBytesWritten;
+}
+
 status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
     Mutex::Autolock autoLock(mLock);
     CHECK(!mStarted);
     CHECK(mSource != NULL);
-    LOGV("Start");
+    ALOGV("Start");
     status_t err;
     M4OSA_ERR result = M4NO_ERROR;
     M4OSA_UInt32 startTime = 0;
@@ -126,7 +337,7 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
 
     // Create the BG Audio handler
     mAudioProcess = new VideoEditorBGAudioProcessing();
-    veAudMixSettings audioMixSettings;
+    AudioMixSettings audioMixSettings;
 
     // Pass on the audio ducking parameters
     audioMixSettings.lvInDucking_threshold =
@@ -143,7 +354,7 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
     audioMixSettings.lvPTChannelCount = mAudioMixSettings->uiNbChannels;
 
     // Call to Audio mix param setting
-    mAudioProcess->veSetAudioProcessingParams(audioMixSettings);
+    mAudioProcess->setMixParams(audioMixSettings);
 
     // Get the BG Audio PCM file details
     if ( mBGAudioPCMFileHandle ) {
@@ -157,12 +368,12 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
         mBGAudioPCMFileTrimmedLength = mBGAudioPCMFileLength;
 
 
-        LOGV("VideoEditorAudioPlayer::start M4OSA_kFileReadGetFileSize = %lld",
+        ALOGV("VideoEditorAudioPlayer::start M4OSA_kFileReadGetFileSize = %lld",
                             mBGAudioPCMFileLength);
 
         // Get the duration in time of the audio BT
         if ( result == M4NO_ERROR ) {
-         LOGV("VEAP: channels = %d freq = %d",
+         ALOGV("VEAP: channels = %d freq = %d",
          mAudioMixSettings->uiNbChannels,  mAudioMixSettings->uiSamplingFrequency);
 
             // No trim
@@ -171,7 +382,7 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
                     mAudioMixSettings->uiNbChannels))*1000 ) /
                     mAudioMixSettings->uiSamplingFrequency;
 
-            LOGV("VideoEditorAudioPlayer:: beginCutMs %d , endCutMs %d",
+            ALOGV("VideoEditorAudioPlayer:: beginCutMs %d , endCutMs %d",
                     (unsigned int) mAudioMixSettings->beginCutMs,
                     (unsigned int) mAudioMixSettings->endCutMs);
 
@@ -212,15 +423,15 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
                     sizeof(M4OSA_UInt16)) / 1000; /*make to sec from ms*/
             }
 
-            LOGV("VideoEditorAudioPlayer: file duration recorded : %lld",
+            ALOGV("VideoEditorAudioPlayer: file duration recorded : %lld",
                     mBGAudioPCMFileDuration);
         }
 
         // Last played location to be seeked at for next media item
         if ( result == M4NO_ERROR ) {
-            LOGV("VideoEditorAudioPlayer::mBGAudioStoryBoardSkimTimeStamp %lld",
+            ALOGV("VideoEditorAudioPlayer::mBGAudioStoryBoardSkimTimeStamp %lld",
                     mBGAudioStoryBoardSkimTimeStamp);
-            LOGV("VideoEditorAudioPlayer::uiAddCts %d",
+            ALOGV("VideoEditorAudioPlayer::uiAddCts %d",
                     mAudioMixSettings->uiAddCts);
             if (mBGAudioStoryBoardSkimTimeStamp >= mAudioMixSettings->uiAddCts) {
                 startTime = (mBGAudioStoryBoardSkimTimeStamp -
@@ -230,7 +441,7 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
                 // do nothing
             }
 
-            LOGV("VideoEditorAudioPlayer::startTime %d", startTime);
+            ALOGV("VideoEditorAudioPlayer::startTime %d", startTime);
             seekTimeStamp = 0;
             if (startTime) {
                 if (startTime >= mBGAudioPCMFileDuration) {
@@ -276,7 +487,7 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
 
     mFirstBufferResult = mSource->read(&mFirstBuffer);
     if (mFirstBufferResult == INFO_FORMAT_CHANGED) {
-        LOGV("INFO_FORMAT_CHANGED!!!");
+        ALOGV("INFO_FORMAT_CHANGED!!!");
 
         CHECK(mFirstBuffer == NULL);
         mFirstBufferResult = OK;
@@ -300,7 +511,7 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
 
     if (mAudioSink.get() != NULL) {
         status_t err = mAudioSink->open(
-                mSampleRate, numChannels, AUDIO_FORMAT_PCM_16_BIT,
+                mSampleRate, numChannels, CHANNEL_MASK_USE_CHANNEL_ORDER, AUDIO_FORMAT_PCM_16_BIT,
                 DEFAULT_AUDIOSINK_BUFFERCOUNT,
                 &VideoEditorAudioPlayer::AudioSinkCallback, this);
         if (err != OK) {
@@ -323,10 +534,8 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
     } else {
         mAudioTrack = new AudioTrack(
                 AUDIO_STREAM_MUSIC, mSampleRate, AUDIO_FORMAT_PCM_16_BIT,
-                (numChannels == 2)
-                    ? AUDIO_CHANNEL_OUT_STEREO
-                    : AUDIO_CHANNEL_OUT_MONO,
-                0, 0, &AudioCallback, this, 0);
+                audio_channel_out_mask_from_count(numChannels),
+                0, AUDIO_OUTPUT_FLAG_NONE, &AudioCallback, this, 0);
 
         if ((err = mAudioTrack->initCheck()) != OK) {
             delete mAudioTrack;
@@ -355,37 +564,11 @@ status_t VideoEditorAudioPlayer::start(bool sourceAlreadyStarted) {
     return OK;
 }
 
-void VideoEditorAudioPlayer::resume() {
-
-    veAudMixSettings audioMixSettings;
-
-    // Single audio player is used;
-    // Pass on the audio ducking parameters
-    // which might have changed with new audio source
-    audioMixSettings.lvInDucking_threshold =
-        mAudioMixSettings->uiInDucking_threshold;
-    audioMixSettings.lvInDucking_lowVolume =
-        ((M4OSA_Float)mAudioMixSettings->uiInDucking_lowVolume) / 100.0;
-    audioMixSettings.lvInDucking_enable =
-        mAudioMixSettings->bInDucking_enable;
-    audioMixSettings.lvPTVolLevel =
-        ((M4OSA_Float)mBGAudioStoryBoardCurrentMediaVolumeVal) / 100.0;
-    audioMixSettings.lvBTVolLevel =
-        ((M4OSA_Float)mAudioMixSettings->uiAddVolume) / 100.0;
-    audioMixSettings.lvBTChannelCount = mAudioMixSettings->uiBTChannelCount;
-    audioMixSettings.lvPTChannelCount = mAudioMixSettings->uiNbChannels;
-
-    // Call to Audio mix param setting
-    mAudioProcess->veSetAudioProcessingParams(audioMixSettings);
-
-    //Call the base class
-    AudioPlayerBase::resume();
-}
 
 void VideoEditorAudioPlayer::reset() {
 
-    LOGV("reset");
-    AudioPlayerBase::reset();
+    ALOGV("reset");
+    clear();
 
     // Capture the current seek point
     mBGAudioPCMFileSeekPoint = 0;
@@ -478,8 +661,8 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                           (mPositionTimeMediaUs - mSeekTimeUs)) >=
                           (int64_t)(mAudioMixSettings->uiAddCts * 1000)) {
 
-                        LOGV("VideoEditorAudioPlayer::INSIDE MIXING");
-                        LOGV("Checking %lld <= %lld",
+                        ALOGV("VideoEditorAudioPlayer::INSIDE MIXING");
+                        ALOGV("Checking %lld <= %lld",
                             mBGAudioPCMFileSeekPoint-mBGAudioPCMFileOriginalSeekPoint,
                             mBGAudioPCMFileTrimmedLength);
 
@@ -495,7 +678,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                         pPTMdata = (M4OSA_Int16*) ((uint8_t*) mInputBuffer->data()
                                 + mInputBuffer->range_offset());
 
-                        LOGV("mix with background malloc to do len %d", len);
+                        ALOGV("mix with background malloc to do len %d", len);
 
                         bgFrame.m_dataAddress = (M4OSA_UInt16*)M4OSA_32bitAlignedMalloc( len, 1,
                                                        (M4OSA_Char*)"bgFrame");
@@ -505,7 +688,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                                                     (M4OSA_Char*)"mixFrame");
                         mixFrame.m_bufferSize = len;
 
-                        LOGV("mix with bgm with size %lld", mBGAudioPCMFileLength);
+                        ALOGV("mix with bgm with size %lld", mBGAudioPCMFileLength);
 
                         CHECK(mInputBuffer->meta_data()->findInt64(kKeyTime,
                                          &mPositionTimeMediaUs));
@@ -514,11 +697,11 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                              mBGAudioPCMFileOriginalSeekPoint <=
                               (mBGAudioPCMFileTrimmedLength - len)) {
 
-                            LOGV("Checking mBGAudioPCMFileHandle %d",
+                            ALOGV("Checking mBGAudioPCMFileHandle %d",
                                 (unsigned int)mBGAudioPCMFileHandle);
 
                             if (mBGAudioPCMFileHandle != M4OSA_NULL) {
-                                LOGV("fillBuffer seeking file to %lld",
+                                ALOGV("fillBuffer seeking file to %lld",
                                     mBGAudioPCMFileSeekPoint);
 
                             // TODO : 32bits required for OSAL
@@ -531,7 +714,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                                 mBGAudioPCMFileSeekPoint = tmp32;
 
                                 if (err != M4NO_ERROR){
-                                    LOGE("M4OSA_fileReadSeek err %d",(int)err);
+                                    ALOGE("M4OSA_fileReadSeek err %d",(int)err);
                                 }
 
                                 err = M4OSA_fileReadData(mBGAudioPCMFileHandle,
@@ -539,7 +722,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                                        (M4OSA_UInt32*)&len);
                                 if (err == M4WAR_NO_DATA_YET ) {
 
-                                    LOGV("fillBuffer End of file reached");
+                                    ALOGV("fillBuffer End of file reached");
                                     err = M4NO_ERROR;
 
                                     // We reached the end of file
@@ -550,7 +733,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                                           mAudioMixSettings->uiSamplingFrequency) *
                                           mAudioMixSettings->uiNbChannels *
                                            sizeof(M4OSA_UInt16)) / 1000;
-                                        LOGV("fillBuffer Looping \
+                                        ALOGV("fillBuffer Looping \
                                             to mBGAudioPCMFileSeekPoint %lld",
                                             mBGAudioPCMFileSeekPoint);
                                     }
@@ -563,10 +746,10 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                                         }
                                     }
                                 } else if (err != M4NO_ERROR ) {
-                                     LOGV("fileReadData for audio err %d", err);
+                                     ALOGV("fileReadData for audio err %d", err);
                                 } else {
                                     mBGAudioPCMFileSeekPoint += len;
-                                    LOGV("fillBuffer mBGAudioPCMFileSeekPoint \
+                                    ALOGV("fillBuffer mBGAudioPCMFileSeekPoint \
                                          %lld", mBGAudioPCMFileSeekPoint);
 
                                     // Assign the ptr data to primary track
@@ -574,7 +757,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                                     ptFrame.m_bufferSize = len;
 
                                     // Call to mix and duck
-                                    mAudioProcess->veProcessAudioMixNDuck(
+                                    mAudioProcess->mixAndDuck(
                                          &ptFrame, &bgFrame, &mixFrame);
 
                                         // Overwrite the decoded buffer
@@ -617,7 +800,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
             Mutex::Autolock autoLock(mLock);
 
             if (status != OK) {
-                LOGV("fillBuffer: mSource->read returned err %d", status);
+                ALOGV("fillBuffer: mSource->read returned err %d", status);
                 if (mObserver && !mReachedEOS) {
                     postEOS = true;
                 }
@@ -634,7 +817,7 @@ size_t VideoEditorAudioPlayer::fillBuffer(void *data, size_t size) {
                 ((mNumFramesPlayed + size_done / mFrameSize) * 1000000)
                     / mSampleRate;
 
-            LOGV("buffer->size() = %d, "
+            ALOGV("buffer->size() = %d, "
                      "mPositionTimeMediaUs=%.2f mPositionTimeRealUs=%.2f",
                  mInputBuffer->range_length(),
                  mPositionTimeMediaUs / 1E6, mPositionTimeRealUs / 1E6);

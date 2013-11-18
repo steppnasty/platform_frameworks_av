@@ -21,8 +21,8 @@
 
 #include "PreviewRenderer.h"
 
-#include <media/stagefright/MediaDebug.h>
-#include <surfaceflinger/Surface.h>
+#include <media/stagefright/foundation/ADebug.h>
+#include <gui/Surface.h>
 
 namespace android {
 
@@ -97,12 +97,11 @@ PreviewRenderer::~PreviewRenderer() {
 void PreviewRenderer::getBufferYV12(uint8_t **data, size_t *stride) {
     int err = OK;
 
-    if ((err = mSurface->ANativeWindow::dequeueBuffer(mSurface.get(), &mBuf)) != 0) {
-        LOGW("Surface::dequeueBuffer returned error %d", err);
+    if ((err = native_window_dequeue_buffer_and_wait(mSurface.get(),
+            &mBuf)) != 0) {
+        ALOGW("native_window_dequeue_buffer_and_wait returned error %d", err);
         return;
     }
-
-    CHECK_EQ(0, mSurface->ANativeWindow::lockBuffer(mSurface.get(), mBuf));
 
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
@@ -132,7 +131,7 @@ void PreviewRenderer::renderYV12() {
         CHECK_EQ(0, mapper.unlock(mBuf->handle));
 
         if ((err = mSurface->ANativeWindow::queueBuffer(mSurface.get(), mBuf)) != 0) {
-            LOGW("Surface::queueBuffer returned error %d", err);
+            ALOGW("Surface::queueBuffer returned error %d", err);
         }
     }
     mBuf = NULL;

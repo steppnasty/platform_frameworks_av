@@ -23,6 +23,7 @@
 #include "AnotherPacketSource.h"
 #include "MyHandler.h"
 
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MetaData.h>
 
 namespace android {
@@ -39,6 +40,7 @@ NuPlayer::RTSPSource::RTSPSource(
       mState(DISCONNECTED),
       mFinalResult(OK),
       mDisconnectReplyID(0),
+      mStartingUp(true),
       mSeekGeneration(0) {
     if (headers) {
         mExtraHeaders = *headers;
@@ -94,7 +96,7 @@ status_t NuPlayer::RTSPSource::feedMoreTSData() {
     return mFinalResult;
 }
 
-sp<MetaData> NuPlayer::RTSPSource::getFormat(bool audio) {
+sp<MetaData> NuPlayer::RTSPSource::getFormatMeta(bool audio) {
     sp<AnotherPacketSource> source = getSource(audio);
 
     if (source == NULL) {
@@ -104,8 +106,45 @@ sp<MetaData> NuPlayer::RTSPSource::getFormat(bool audio) {
     return source->getFormat();
 }
 
+bool NuPlayer::RTSPSource::haveSufficientDataOnAllTracks() {
+    // We're going to buffer at least 2 secs worth data on all tracks before
+    // starting playback (both at startup and after a seek).
+
+    static const int64_t kMinDurationUs = 2000000ll;
+
+    status_t err;
+    int64_t durationUs;
+    if (mAudioTrack != NULL
+            && (durationUs = mAudioTrack->getBufferedDurationUs(&err))
+                    < kMinDurationUs
+            && err == OK) {
+        ALOGV("audio track doesn't have enough data yet. (%.2f secs buffered)",
+              durationUs / 1E6);
+        return false;
+    }
+
+    if (mVideoTrack != NULL
+            && (durationUs = mVideoTrack->getBufferedDurationUs(&err))
+                    < kMinDurationUs
+            && err == OK) {
+        ALOGV("video track doesn't have enough data yet. (%.2f secs buffered)",
+              durationUs / 1E6);
+        return false;
+    }
+
+    return true;
+}
+
 status_t NuPlayer::RTSPSource::dequeueAccessUnit(
         bool audio, sp<ABuffer> *accessUnit) {
+    if (mStartingUp) {
+        if (!haveSufficientDataOnAllTracks()) {
+            return -EWOULDBLOCK;
+        }
+
+        mStartingUp = false;
+    }
+
     sp<AnotherPacketSource> source = getSource(audio);
 
     if (source == NULL) {
@@ -121,6 +160,13 @@ status_t NuPlayer::RTSPSource::dequeueAccessUnit(
 }
 
 sp<AnotherPacketSource> NuPlayer::RTSPSource::getSource(bool audio) {
+    if (mTSParser != NULL) {
+        sp<MediaSource> source = mTSParser->getSource(
+                audio ? ATSParser::AUDIO : ATSParser::VIDEO);
+
+        return static_cast<AnotherPacketSource *>(source.get());
+    }
+
     return audio ? mAudioTrack : mVideoTrack;
 }
 
@@ -164,8 +210,8 @@ void NuPlayer::RTSPSource::performSeek(int64_t seekTimeUs) {
     mHandler->seek(seekTimeUs);
 }
 
-bool NuPlayer::RTSPSource::isSeekable() {
-    return true;
+uint32_t NuPlayer::RTSPSource::flags() const {
+    return FLAG_SEEKABLE;
 }
 
 void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
@@ -209,6 +255,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
         case MyHandler::kWhatSeekDone:
         {
             mState = CONNECTED;
+            mStartingUp = true;
             break;
         }
 
@@ -216,17 +263,51 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
         {
             size_t trackIndex;
             CHECK(msg->findSize("trackIndex", &trackIndex));
-            CHECK_LT(trackIndex, mTracks.size());
 
-            sp<RefBase> obj;
-            CHECK(msg->findObject("accessUnit", &obj));
+            if (mTSParser == NULL) {
+                CHECK_LT(trackIndex, mTracks.size());
+            } else {
+                CHECK_EQ(trackIndex, 0u);
+            }
 
-            sp<ABuffer> accessUnit = static_cast<ABuffer *>(obj.get());
+            sp<ABuffer> accessUnit;
+            CHECK(msg->findBuffer("accessUnit", &accessUnit));
 
             int32_t damaged;
             if (accessUnit->meta()->findInt32("damaged", &damaged)
                     && damaged) {
                 ALOGI("dropping damaged access unit.");
+                break;
+            }
+
+            if (mTSParser != NULL) {
+                size_t offset = 0;
+                status_t err = OK;
+                while (offset + 188 <= accessUnit->size()) {
+                    err = mTSParser->feedTSPacket(
+                            accessUnit->data() + offset, 188);
+                    if (err != OK) {
+                        break;
+                    }
+
+                    offset += 188;
+                }
+
+                if (offset < accessUnit->size()) {
+                    err = ERROR_MALFORMED;
+                }
+
+                if (err != OK) {
+                    sp<AnotherPacketSource> source = getSource(false /* audio */);
+                    if (source != NULL) {
+                        source->signalEOS(err);
+                    }
+
+                    source = getSource(true /* audio */);
+                    if (source != NULL) {
+                        source->signalEOS(err);
+                    }
+                }
                 break;
             }
 
@@ -239,14 +320,9 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
 
                 if (!info->mNPTMappingValid) {
                     // This is a live stream, we didn't receive any normal
-                    // playtime mapping. Assume the first packets correspond
-                    // to time 0.
-
-                    ALOGV("This is a live stream, assuming time = 0");
-
-                    info->mRTPTime = rtpTime;
-                    info->mNormalPlaytimeUs = 0ll;
-                    info->mNPTMappingValid = true;
+                    // playtime mapping. We won't map to npt time.
+                    source->queueAccessUnit(accessUnit);
+                    break;
                 }
 
                 int64_t nptUs =
@@ -264,13 +340,27 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
 
         case MyHandler::kWhatEOS:
         {
-            size_t trackIndex;
-            CHECK(msg->findSize("trackIndex", &trackIndex));
-            CHECK_LT(trackIndex, mTracks.size());
-
             int32_t finalResult;
             CHECK(msg->findInt32("finalResult", &finalResult));
             CHECK_NE(finalResult, (status_t)OK);
+
+            if (mTSParser != NULL) {
+                sp<AnotherPacketSource> source = getSource(false /* audio */);
+                if (source != NULL) {
+                    source->signalEOS(finalResult);
+                }
+
+                source = getSource(true /* audio */);
+                if (source != NULL) {
+                    source->signalEOS(finalResult);
+                }
+
+                return;
+            }
+
+            size_t trackIndex;
+            CHECK(msg->findSize("trackIndex", &trackIndex));
+            CHECK_LT(trackIndex, mTracks.size());
 
             TrackInfo *info = &mTracks.editItemAt(trackIndex);
             sp<AnotherPacketSource> source = info->mSource;
@@ -331,6 +421,14 @@ void NuPlayer::RTSPSource::onConnected() {
 
         const char *mime;
         CHECK(format->findCString(kKeyMIMEType, &mime));
+
+        if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2TS)) {
+            // Very special case for MPEG2 Transport Streams.
+            CHECK_EQ(numTracks, 1u);
+
+            mTSParser = new ATSParser;
+            return;
+        }
 
         bool isAudio = !strncasecmp(mime, "audio/", 6);
         bool isVideo = !strncasecmp(mime, "video/", 6);

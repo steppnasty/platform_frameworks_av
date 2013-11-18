@@ -25,15 +25,12 @@
 #include <string.h>
 #include <cutils/atomic.h>
 #include <cutils/properties.h> // for property_get
-#include <android_runtime/ActivityManager.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <binder/MemoryHeapBase.h>
 #include <binder/MemoryBase.h>
 
 #include <utils/String16.h>
-
-#include <media/AudioTrack.h>
 
 #include <system/audio.h>
 

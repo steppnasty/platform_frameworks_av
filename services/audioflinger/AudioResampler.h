@@ -20,7 +20,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include "AudioBufferProvider.h"
+#include <media/AudioBufferProvider.h>
 
 namespace android {
 // ----------------------------------------------------------------------------
@@ -33,28 +33,36 @@ public:
     //  HIGH_QUALITY: fixed multi-tap FIR (e.g. 48KHz->44.1KHz)
     // NOTE: high quality SRC will only be supported for
     // certain fixed rate conversions. Sample rate cannot be
-    // changed dynamically. 
+    // changed dynamically.
     enum src_quality {
-        DEFAULT=0,
+        DEFAULT_QUALITY=0,
         LOW_QUALITY=1,
         MED_QUALITY=2,
-        HIGH_QUALITY=3
+        HIGH_QUALITY=3,
+        VERY_HIGH_QUALITY=4,
     };
 
     static AudioResampler* create(int bitDepth, int inChannelCount,
-            int32_t sampleRate, int quality=DEFAULT);
+            int32_t sampleRate, src_quality quality=DEFAULT_QUALITY);
 
     virtual ~AudioResampler();
 
     virtual void init() = 0;
     virtual void setSampleRate(int32_t inSampleRate);
     virtual void setVolume(int16_t left, int16_t right);
+    virtual void setLocalTimeFreq(uint64_t freq);
+
+    // set the PTS of the next buffer output by the resampler
+    virtual void setPTS(int64_t pts);
 
     virtual void resample(int32_t* out, size_t outFrameCount,
             AudioBufferProvider* provider) = 0;
 
     virtual void reset();
-    virtual size_t getUnreleasedFrames() { return mInputIndex; }
+    virtual size_t getUnreleasedFrames() const { return mInputIndex; }
+
+    // called from destructor, so must not be virtual
+    src_quality getQuality() const { return mQuality; }
 
 protected:
     // number of bits for phase fraction - 30 bits allows nearly 2x downsampling
@@ -66,16 +74,17 @@ protected:
     // multiplier to calculate fixed point phase increment
     static const double kPhaseMultiplier = 1L << kNumPhaseBits;
 
-    enum format {MONO_16_BIT, STEREO_16_BIT};
-    AudioResampler(int bitDepth, int inChannelCount, int32_t sampleRate);
+    AudioResampler(int bitDepth, int inChannelCount, int32_t sampleRate, src_quality quality);
 
     // prevent copying
     AudioResampler(const AudioResampler&);
     AudioResampler& operator=(const AudioResampler&);
 
-    int32_t mBitDepth;
-    int32_t mChannelCount;
-    int32_t mSampleRate;
+    int64_t calculateOutputPTS(int outputFrameIndex);
+
+    const int32_t mBitDepth;
+    const int32_t mChannelCount;
+    const int32_t mSampleRate;
     int32_t mInSampleRate;
     AudioBufferProvider::Buffer mBuffer;
     union {
@@ -83,10 +92,24 @@ protected:
         uint32_t mVolumeRL;
     };
     int16_t mTargetVolume[2];
-    format mFormat;
     size_t mInputIndex;
     int32_t mPhaseIncrement;
     uint32_t mPhaseFraction;
+    uint64_t mLocalTimeFreq;
+    int64_t mPTS;
+
+private:
+    const src_quality mQuality;
+
+    // Return 'true' if the quality level is supported without explicit request
+    static bool qualityIsSupported(src_quality quality);
+
+    // For pthread_once()
+    static void init_routine();
+
+    // Return the estimated CPU load for specific resampler in MHz.
+    // The absolute number is irrelevant, it's the relative values that matter.
+    static uint32_t qualityMHz(src_quality quality);
 };
 
 // ----------------------------------------------------------------------------

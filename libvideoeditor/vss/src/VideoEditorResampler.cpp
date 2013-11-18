@@ -15,6 +15,7 @@
  */
 
 #define LOG_NDEBUG 1
+#include <audio_utils/primitives.h>
 #include <utils/Log.h>
 #include "AudioMixer.h"
 #include "VideoEditorResampler.h"
@@ -25,7 +26,7 @@ struct VideoEditorResampler : public AudioBufferProvider {
 
     public:
 
-        virtual status_t getNextBuffer(Buffer* buffer);
+        virtual status_t getNextBuffer(Buffer* buffer, int64_t pts);
         virtual void releaseBuffer(Buffer* buffer);
 
     enum { //Sampling freq
@@ -52,7 +53,7 @@ struct VideoEditorResampler : public AudioBufferProvider {
 
 #define MAX_SAMPLEDURATION_FOR_CONVERTION 40 //ms
 
-status_t VideoEditorResampler::getNextBuffer(AudioBufferProvider::Buffer *pBuffer) {
+status_t VideoEditorResampler::getNextBuffer(AudioBufferProvider::Buffer *pBuffer, int64_t pts) {
 
     uint32_t dataSize = pBuffer->frameCount * this->nbChannels * sizeof(int16_t);
     mTmpInBuffer = (int16_t*)malloc(dataSize);
@@ -79,7 +80,7 @@ M4OSA_Context  LVAudioResamplerCreate(M4OSA_Int32 bitDepth, M4OSA_Int32 inChanne
 
     VideoEditorResampler *context = new VideoEditorResampler();
     context->mResampler = AudioResampler::create(
-        bitDepth, inChannelCount, sampleRate, AudioResampler::DEFAULT);
+        bitDepth, inChannelCount, sampleRate);
     if (context->mResampler == NULL) {
         return NULL;
     }
@@ -161,7 +162,7 @@ void LVAudioresample_LowQuality(M4OSA_Int16* out, M4OSA_Int16* input,
     context->mResampler->resample((int32_t *)pTmpBuffer,
        (size_t)outFrameCount, (VideoEditorResampler *)resamplerContext);
     // Convert back to 16 bits
-    AudioMixer::ditherAndClamp((int32_t*)out, pTmpBuffer, outFrameCount);
+    ditherAndClamp((int32_t*)out, pTmpBuffer, outFrameCount);
     free(pTmpBuffer);
     pTmpBuffer = NULL;
 }

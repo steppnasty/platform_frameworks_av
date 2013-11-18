@@ -23,7 +23,7 @@ I420ColorConverter::I420ColorConverter() {
     mHandle = dlopen("libI420colorconvert.so", RTLD_NOW);
 
     if (mHandle == NULL) {
-        LOGW("I420ColorConverter: cannot load libI420colorconvert.so");
+        ALOGW("I420ColorConverter: cannot load libI420colorconvert.so");
         return;
     }
 
@@ -32,7 +32,7 @@ I420ColorConverter::I420ColorConverter() {
         (void (*)(I420ColorConverter*)) dlsym(mHandle, "getI420ColorConverter");
 
     if (getI420ColorConverter == NULL) {
-        LOGW("I420ColorConverter: cannot load getI420ColorConverter");
+        ALOGW("I420ColorConverter: cannot load getI420ColorConverter");
         dlclose(mHandle);
         mHandle = NULL;
         return;
@@ -41,8 +41,7 @@ I420ColorConverter::I420ColorConverter() {
     // Fill the function pointers.
     getI420ColorConverter(this);
 
-    this->openColorConverterLib();
-    LOGI("I420ColorConverter: libI420colorconvert.so loaded");
+    ALOGI("I420ColorConverter: libI420colorconvert.so loaded");
 }
 
 bool I420ColorConverter::isLoaded() {
@@ -50,8 +49,6 @@ bool I420ColorConverter::isLoaded() {
 }
 
 I420ColorConverter::~I420ColorConverter() {
-
-    this->closeColorConverterLib();
     if (mHandle) {
         dlclose(mHandle);
     }

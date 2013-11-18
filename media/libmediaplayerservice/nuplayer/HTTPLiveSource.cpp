@@ -42,9 +42,7 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
       mUID(uid),
       mFlags(0),
       mFinalResult(OK),
-      mOffset(0),
-      mCurrentPlayingTime(-1),
-      mNewSeekTime(-1) {
+      mOffset(0) {
     if (headers) {
         mExtraHeaders = *headers;
 
@@ -83,7 +81,7 @@ void NuPlayer::HTTPLiveSource::start() {
     mTSParser = new ATSParser;
 }
 
-sp<MetaData> NuPlayer::HTTPLiveSource::getFormat(bool audio) {
+sp<MetaData> NuPlayer::HTTPLiveSource::getFormatMeta(bool audio) {
     ATSParser::SourceType type =
         audio ? ATSParser::AUDIO : ATSParser::VIDEO;
 
@@ -123,9 +121,20 @@ status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
         } else {
             if (buffer[0] == 0x00) {
                 // XXX legacy
-                sp<AMessage> extra;
+
+                uint8_t type = buffer[1];
+
+                sp<AMessage> extra = new AMessage;
+
+                if (type & 2) {
+                    int64_t mediaTimeUs;
+                    memcpy(&mediaTimeUs, &buffer[2], sizeof(mediaTimeUs));
+
+                    extra->setInt64(IStreamListener::kKeyMediaTimeUs, mediaTimeUs);
+                }
+
                 mTSParser->signalDiscontinuity(
-                        buffer[1] == 0x00
+                        ((type & 1) == 0)
                             ? ATSParser::DISCONTINUITY_SEEK
                             : ATSParser::DISCONTINUITY_FORMATCHANGE,
                         extra);
@@ -177,40 +186,23 @@ status_t NuPlayer::HTTPLiveSource::seekTo(int64_t seekTimeUs) {
     while (!mTSParser->PTSTimeDeltaEstablished() && feedMoreTSData() == OK) {
         usleep(100000);
     }
-    if( mFinalResult != OK  ) {
-        if( mFinalResult == ERROR_END_OF_STREAM ) {
-            LOGW("Allow seek even though all ts segments are downloaded");
-            mFinalResult = OK;
-        } else {
-            LOGW("Error state %d, Ignore this seek", mFinalResult);
-            return mFinalResult;
-        }
-    }
 
-    int64_t newSeekTime = -1;
-    mLiveSession->setCurrentPlayingTime(mCurrentPlayingTime);
-
-    mLiveSession->seekTo(seekTimeUs, &newSeekTime);
-    if( newSeekTime >= 0 ) {
-       mTSParser->signalDiscontinuity( ATSParser::DISCONTINUITY_HLS_PLAYER_SEEK, NULL);
-    }
-
-    mNewSeekTime = newSeekTime;
+    mLiveSession->seekTo(seekTimeUs);
 
     return OK;
 }
 
-void NuPlayer::HTTPLiveSource::notifyRenderingPosition(int64_t currentPLayTime) {
-     mCurrentPlayingTime = currentPLayTime;
-}
+uint32_t NuPlayer::HTTPLiveSource::flags() const {
+    uint32_t flags = 0;
+    if (mLiveSession->isSeekable()) {
+        flags |= FLAG_SEEKABLE;
+    }
 
-bool NuPlayer::HTTPLiveSource::isSeekable() {
-    return mLiveSession->isSeekable();
-}
+    if (mLiveSession->hasDynamicDuration()) {
+        flags |= FLAG_DYNAMIC_DURATION;
+    }
 
-status_t NuPlayer::HTTPLiveSource::getNewSeekTime(int64_t *newSeek) {
-    *newSeek = mNewSeekTime;
-    return OK;
+    return flags;
 }
 
 }  // namespace android

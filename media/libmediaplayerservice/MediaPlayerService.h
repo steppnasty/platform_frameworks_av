@@ -1,6 +1,9 @@
 /*
 **
-** Copyright 2008, The Android Open Source Project
+** Copyright (c) 2013, The Linux Foundation. All rights reserved.
+** Not a Contribution.
+**
+** Copyright (C) 2008 The Android Open Source Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -18,6 +21,8 @@
 #ifndef ANDROID_MEDIAPLAYERSERVICE_H
 #define ANDROID_MEDIAPLAYERSERVICE_H
 
+#include <arpa/inet.h>
+
 #include <utils/Log.h>
 #include <utils/threads.h>
 #include <utils/List.h>
@@ -29,14 +34,18 @@
 #include <media/IMediaPlayerService.h>
 #include <media/MediaPlayerInterface.h>
 #include <media/Metadata.h>
+#include <media/stagefright/foundation/ABase.h>
 
 #include <system/audio.h>
 
 namespace android {
 
+class AudioTrack;
 class IMediaRecorder;
 class IMediaMetadataRetriever;
 class IOMX;
+class IRemoteDisplay;
+class IRemoteDisplayClient;
 class MediaRecorderClient;
 
 #define CALLBACK_ANTAGONIZER 0
@@ -66,7 +75,9 @@ class MediaPlayerService : public BnMediaPlayerService
 
     class AudioOutput : public MediaPlayerBase::AudioSink
     {
-    public:
+        class CallbackData;
+
+     public:
                                 AudioOutput(int sessionId);
         virtual                 ~AudioOutput();
 
@@ -77,36 +88,29 @@ class MediaPlayerService : public BnMediaPlayerService
         virtual ssize_t         channelCount() const;
         virtual ssize_t         frameSize() const;
         virtual uint32_t        latency() const;
+#ifdef QCOM_HARDWARE
+        virtual audio_stream_type_t streamType() const;
+#endif
         virtual float           msecsPerFrame() const;
-        virtual status_t        getPosition(uint32_t *position);
-        virtual int             getSessionId();
+        virtual status_t        getPosition(uint32_t *position) const;
+        virtual status_t        getFramesWritten(uint32_t *frameswritten) const;
+        virtual int             getSessionId() const;
 
         virtual status_t        open(
-                uint32_t sampleRate, int channelCount,
-                int format, int bufferCount,
-                AudioCallback cb, void *cookie);
-#ifdef WITH_QCOM_LPA
-        virtual status_t        openSession(
-                int format, int sessionId, uint32_t sampleRate, int channels);
-#endif
+                uint32_t sampleRate, int channelCount, audio_channel_mask_t channelMask,
+                audio_format_t format, int bufferCount,
+                AudioCallback cb, void *cookie,
+                audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE);
+
         virtual void            start();
         virtual ssize_t         write(const void* buffer, size_t size);
         virtual void            stop();
         virtual void            flush();
         virtual void            pause();
-#ifdef WITH_QCOM_LPA
-        virtual void            pauseSession();
-        virtual void            resumeSession();
-#endif
         virtual void            close();
-#ifdef WITH_QCOM_LPA
-        virtual void            closeSession();
-#endif
-                void            setAudioStreamType(int streamType) { mStreamType = streamType; }
-#ifdef WITH_QCOM_LPA
-        virtual int             getAudioStreamType() { return mStreamType; }
-#endif
+                void            setAudioStreamType(audio_stream_type_t streamType) { mStreamType = streamType; }
                 void            setVolume(float left, float right);
+        virtual status_t        setPlaybackRatePermille(int32_t ratePermille);
                 status_t        setAuxEffectSendLevel(float level);
                 status_t        attachAuxEffect(int effectId);
         virtual status_t        dump(int fd, const Vector<String16>& args) const;
@@ -114,29 +118,70 @@ class MediaPlayerService : public BnMediaPlayerService
         static bool             isOnEmulator();
         static int              getMinBufferCount();
                 void            setNextOutput(const sp<AudioOutput>& nextOutput);
+                void            switchToNextOutput();
+        virtual bool            needsTrailingPadding() { return mNextOutput == NULL; }
+#ifdef QCOM_HARDWARE
+        virtual ssize_t         sampleRate() const;
+        virtual status_t        getTimeStamp(uint64_t *tstamp);
+#endif
+
     private:
         static void             setMinBufferCount();
         static void             CallbackWrapper(
                 int event, void *me, void *info);
 
         AudioTrack*             mTrack;
+        AudioTrack*             mRecycledTrack;
         sp<AudioOutput>         mNextOutput;
-#ifdef WITH_QCOM_LPA
-        AudioTrack*             mSession;
-#endif
         AudioCallback           mCallback;
         void *                  mCallbackCookie;
-        int                     mStreamType;
+        CallbackData *          mCallbackData;
+        uint64_t                mBytesWritten;
+        audio_stream_type_t     mStreamType;
         float                   mLeftVolume;
         float                   mRightVolume;
+        int32_t                 mPlaybackRatePermille;
+        uint32_t                mSampleRateHz; // sample rate of the content, as set in open()
         float                   mMsecsPerFrame;
         int                     mSessionId;
         float                   mSendLevel;
         int                     mAuxEffectId;
         static bool             mIsOnEmulator;
         static int              mMinBufferCount;  // 12 for emulator; otherwise 4
+        audio_output_flags_t    mFlags;
 
-    };
+        // CallbackData is what is passed to the AudioTrack as the "user" data.
+        // We need to be able to target this to a different Output on the fly,
+        // so we can't use the Output itself for this.
+        class CallbackData {
+        public:
+            CallbackData(AudioOutput *cookie) {
+                mData = cookie;
+                mSwitching = false;
+            }
+            AudioOutput *   getOutput() { return mData;}
+            void            setOutput(AudioOutput* newcookie) { mData = newcookie; }
+            // lock/unlock are used by the callback before accessing the payload of this object
+            void            lock() { mLock.lock(); }
+            void            unlock() { mLock.unlock(); }
+            // beginTrackSwitch/endTrackSwitch are used when this object is being handed over
+            // to the next sink.
+            void            beginTrackSwitch() { mLock.lock(); mSwitching = true; }
+            void            endTrackSwitch() {
+                if (mSwitching) {
+                    mLock.unlock();
+                }
+                mSwitching = false;
+            }
+        private:
+            AudioOutput *   mData;
+            mutable Mutex   mLock;
+            bool            mSwitching;
+            DISALLOW_EVIL_CONSTRUCTORS(CallbackData);
+        };
+
+    }; // AudioOutput
+
 
     class AudioCache : public MediaPlayerBase::AudioSink
     {
@@ -152,13 +197,15 @@ class MediaPlayerService : public BnMediaPlayerService
         virtual ssize_t         frameSize() const { return ssize_t(mChannelCount * ((mFormat == AUDIO_FORMAT_PCM_16_BIT)?sizeof(int16_t):sizeof(u_int8_t))); }
         virtual uint32_t        latency() const;
         virtual float           msecsPerFrame() const;
-        virtual status_t        getPosition(uint32_t *position);
-        virtual int             getSessionId();
+        virtual status_t        getPosition(uint32_t *position) const;
+        virtual status_t        getFramesWritten(uint32_t *frameswritten) const;
+        virtual int             getSessionId() const;
 
         virtual status_t        open(
-                uint32_t sampleRate, int channelCount, int format,
-                int bufferCount = 1,
-                AudioCallback cb = NULL, void *cookie = NULL);
+                uint32_t sampleRate, int channelCount, audio_channel_mask_t channelMask,
+                audio_format_t format, int bufferCount = 1,
+                AudioCallback cb = NULL, void *cookie = NULL,
+                audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE);
 
         virtual void            start();
         virtual ssize_t         write(const void* buffer, size_t size);
@@ -166,13 +213,13 @@ class MediaPlayerService : public BnMediaPlayerService
         virtual void            flush() {}
         virtual void            pause() {}
         virtual void            close() {}
-                void            setAudioStreamType(int streamType) {}
-#ifdef WITH_QCOM_LPA
-        virtual int             getAudioStreamType() { return 0; }
-#endif
+                void            setAudioStreamType(audio_stream_type_t streamType) {}
                 void            setVolume(float left, float right) {}
+#ifndef QCOM_HARDWARE
                 uint32_t        sampleRate() const { return mSampleRate; }
-                uint32_t        format() const { return (uint32_t)mFormat; }
+#endif
+        virtual status_t        setPlaybackRatePermille(int32_t ratePermille) { return INVALID_OPERATION; }
+                audio_format_t  format() const { return mFormat; }
                 size_t          size() const { return mSize; }
                 status_t        wait();
 
@@ -181,6 +228,9 @@ class MediaPlayerService : public BnMediaPlayerService
         static  void            notify(void* cookie, int msg,
                                        int ext1, int ext2, const Parcel *obj);
         virtual status_t        dump(int fd, const Vector<String16>& args) const;
+#ifdef QCOM_HARDWARE
+        virtual ssize_t         sampleRate() const;
+#endif
 
     private:
                                 AudioCache();
@@ -190,7 +240,7 @@ class MediaPlayerService : public BnMediaPlayerService
         sp<MemoryHeapBase>  mHeap;
         float               mMsecsPerFrame;
         uint16_t            mChannelCount;
-        uint16_t            mFormat;
+        audio_format_t      mFormat;
         ssize_t             mFrameCount;
         uint32_t            mSampleRate;
         uint32_t            mSize;
@@ -198,7 +248,7 @@ class MediaPlayerService : public BnMediaPlayerService
         bool                mCommandComplete;
 
         sp<Thread>          mCallbackThread;
-    };
+    }; // AudioCache
 
 public:
     static  void                instantiate();
@@ -210,10 +260,14 @@ public:
 
     virtual sp<IMediaPlayer>    create(pid_t pid, const sp<IMediaPlayerClient>& client, int audioSessionId);
 
-    virtual sp<IMemory>         decode(const char* url, uint32_t *pSampleRate, int* pNumChannels, int* pFormat);
-    virtual sp<IMemory>         decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate, int* pNumChannels, int* pFormat);
+    virtual sp<IMemory>         decode(const char* url, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat);
+    virtual sp<IMemory>         decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat);
     virtual sp<IOMX>            getOMX();
+    virtual sp<ICrypto>         makeCrypto();
+    virtual sp<IHDCP>           makeHDCP();
 
+    virtual sp<IRemoteDisplay> listenForRemoteDisplay(const sp<IRemoteDisplayClient>& client,
+            const String8& iface);
     virtual status_t            dump(int fd, const Vector<String16>& args);
 
             void                removeClient(wp<Client> client);
@@ -265,7 +319,6 @@ public:
 private:
 
     class Client : public BnMediaPlayer {
-
         // IMediaPlayer interface
         virtual void            disconnect();
         virtual status_t        setVideoSurfaceTexture(
@@ -279,7 +332,7 @@ private:
         virtual status_t        getCurrentPosition(int* msec);
         virtual status_t        getDuration(int* msec);
         virtual status_t        reset();
-        virtual status_t        setAudioStreamType(int type);
+        virtual status_t        setAudioStreamType(audio_stream_type_t type);
         virtual status_t        setLooping(int loop);
         virtual status_t        setVolume(float leftVolume, float rightVolume);
         virtual status_t        invoke(const Parcel& request, Parcel *reply);
@@ -291,6 +344,8 @@ private:
         virtual status_t        attachAuxEffect(int effectId);
         virtual status_t        setParameter(int key, const Parcel &request);
         virtual status_t        getParameter(int key, Parcel *reply);
+        virtual status_t        setRetransmitEndpoint(const struct sockaddr_in* endpoint);
+        virtual status_t        getRetransmitEndpoint(struct sockaddr_in* endpoint);
         virtual status_t        setNextPlayer(const sp<IMediaPlayer>& player);
 
         sp<MediaPlayerBase>     createPlayer(player_type playerType);
@@ -302,6 +357,10 @@ private:
         virtual status_t        setDataSource(int fd, int64_t offset, int64_t length);
 
         virtual status_t        setDataSource(const sp<IStreamSource> &source);
+
+        sp<MediaPlayerBase>     setDataSource_pre(player_type playerType);
+        void                    setDataSource_post(const sp<MediaPlayerBase>& p,
+                                                   status_t status);
 
         static  void            notify(void* cookie, int msg,
                                        int ext1, int ext2, const Parcel *obj);
@@ -354,6 +413,8 @@ private:
                     uid_t                       mUID;
                     sp<ANativeWindow>           mConnectedWindow;
                     sp<IBinder>                 mConnectedWindowBinder;
+                    struct sockaddr_in          mRetransmitEndpoint;
+                    bool                        mRetransmitEndpointValid;
                     sp<Client>                  mNextClient;
 
         // Metadata filters.
@@ -369,7 +430,7 @@ private:
 #if CALLBACK_ANTAGONIZER
                     Antagonizer*                mAntagonizer;
 #endif
-    };
+    }; // Client
 
 // ----------------------------------------------------------------------------
 
@@ -381,6 +442,7 @@ private:
                 SortedVector< wp<MediaRecorderClient> > mMediaRecorderClients;
                 int32_t                     mNextConnId;
                 sp<IOMX>                    mOMX;
+                sp<ICrypto>                 mCrypto;
 };
 
 // ----------------------------------------------------------------------------

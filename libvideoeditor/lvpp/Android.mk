@@ -34,8 +34,6 @@ LOCAL_SRC_FILES:=          \
     DummyAudioSource.cpp \
     DummyVideoSource.cpp \
     VideoEditorBGAudioProcessing.cpp \
-    AudioPlayerBase.cpp \
-    PreviewPlayerBase.cpp \
     PreviewRenderer.cpp \
     I420ColorConverter.cpp \
     NativeWindowRenderer.cpp
@@ -43,47 +41,48 @@ LOCAL_SRC_FILES:=          \
 LOCAL_MODULE_TAGS := optional
 
 LOCAL_STATIC_LIBRARIES := \
-    libvideoeditor_osal \
     libstagefright_color_conversion
 
 
 
-LOCAL_SHARED_LIBRARIES := \
-    libbinder          \
-    libutils           \
-    libcutils          \
-    libmedia           \
-    libdrmframework    \
-    libstagefright  \
-    libstagefright_omx  \
+LOCAL_SHARED_LIBRARIES :=     \
+    libaudioflinger           \
+    libaudioutils             \
+    libbinder                 \
+    libcutils                 \
+    libEGL                    \
+    libGLESv2                 \
+    libgui                    \
+    libmedia                  \
+    libmedia_native           \
+    libdrmframework           \
+    libstagefright            \
     libstagefright_foundation \
-    libgui \
-    libaudioflinger \
-    libui \
-    libEGL \
-    libGLESv2
+    libstagefright_omx        \
+    libsync                   \
+    libui                     \
+    libutils                  \
+    libvideoeditor_osal       \
 
 
 LOCAL_C_INCLUDES += \
-    $(TOP)/frameworks/base/core/jni \
-    $(TOP)/frameworks/base/include \
-    $(TOP)/frameworks/base/include/media \
-    $(TOP)/frameworks/base/media/libmediaplayerservice \
-    $(TOP)/frameworks/base/media/libstagefright \
-    $(TOP)/frameworks/base/media/libstagefright/include \
-    $(TOP)/frameworks/base/media/libstagefright/rtsp \
-    $(JNI_H_INCLUDE) \
+    $(TOP)/system/media/audio_utils/include \
+    $(TOP)/frameworks/av/media/libmediaplayerservice \
+    $(TOP)/frameworks/av/media/libstagefright \
+    $(TOP)/frameworks/av/media/libstagefright/include \
+    $(TOP)/frameworks/av/media/libstagefright/rtsp \
     $(call include-path-for, corecg graphics) \
-    $(TOP)/frameworks/base/include/media/stagefright/openmax \
+    $(TOP)/frameworks/av/libvideoeditor/include \
     $(TOP)/frameworks/av/libvideoeditor/osal/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/common/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/mcs/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/stagefrightshells/inc \
     $(TOP)/frameworks/av/libvideoeditor/lvpp \
-    $(TOP)/frameworks/av/libvideoeditor/include \
-    $(TOP)/frameworks/base/media/jni/mediaeditor \
-    $(TOP)/frameworks/av/services/audioflinger
+    $(TOP)/frameworks/av/services/audioflinger \
+    $(TOP)/frameworks/native/include/media/editor \
+    $(TOP)/frameworks/native/include/media/openmax \
+    $(TOP)/frameworks/native/services/audioflinger
 
 
 LOCAL_SHARED_LIBRARIES += libdl

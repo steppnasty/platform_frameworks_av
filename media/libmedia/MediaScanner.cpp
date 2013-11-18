@@ -54,7 +54,7 @@ const char *MediaScanner::locale() const {
 void MediaScanner::loadSkipList() {
     mSkipList = (char *)malloc(PROPERTY_VALUE_MAX * sizeof(char));
     if (mSkipList) {
-      property_get("testing.mediascanner.skiplist", mSkipList, "");
+        property_get("testing.mediascanner.skiplist", mSkipList, "");
     }
     if (!mSkipList || (strlen(mSkipList) == 0)) {
         free(mSkipList);
@@ -135,15 +135,27 @@ MediaScanResult MediaScanner::doProcessDirectory(
     struct dirent* entry;
 
     if (shouldSkipDirectory(path)) {
-      ALOGD("Skipping: %s", path);
-      return MEDIA_SCAN_RESULT_OK;
+        ALOGD("Skipping: %s", path);
+        return MEDIA_SCAN_RESULT_OK;
+    }
+
+    // Completely skip all directories containing a ".noscanandnomtp" file
+    if (pathRemaining >= 15 /* strlen(".noscanandnomtp") */ ) {
+        strcpy(fileSpot, ".noscanandnomtp");
+        if (access(path, F_OK) == 0) {
+            ALOGV("found .noscanandnomtp, completely skipping");
+            return MEDIA_SCAN_RESULT_SKIPPED;
+        }
+
+        // restore path
+        fileSpot[0] = 0;
     }
 
     // Treat all files as non-media in directories that contain a  ".nomedia" file
     if (pathRemaining >= 8 /* strlen(".nomedia") */ ) {
         strcpy(fileSpot, ".nomedia");
         if (access(path, F_OK) == 0) {
-            ALOGV("found .nomedia, setting noMedia flag\n");
+            ALOGV("found .nomedia, setting noMedia flag");
             noMedia = true;
         }
 

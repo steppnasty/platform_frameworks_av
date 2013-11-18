@@ -1,5 +1,9 @@
 /*
  * Copyright (C) 2009 The Android Open Source Project
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ *
+ * Not a Contribution, Apache license notifications and license are retained
+ * for attribution purposes only
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +23,7 @@
 
 #include <cutils/misc.h>
 #include <cutils/config_utils.h>
+#include <utils/String8.h>
 #include <utils/Vector.h>
 #include <utils/SortedVector.h>
 #include <binder/BinderService.h>
@@ -30,8 +35,6 @@
 #include <media/AudioEffect.h>
 
 namespace android {
-
-class String8;
 
 // ----------------------------------------------------------------------------
 
@@ -60,21 +63,14 @@ public:
                                                                 audio_devices_t device,
                                                                 const char *device_address);
     virtual status_t setPhoneState(audio_mode_t state);
-    virtual status_t setRingerMode(uint32_t mode, uint32_t mask);
     virtual status_t setForceUse(audio_policy_force_use_t usage, audio_policy_forced_cfg_t config);
     virtual audio_policy_forced_cfg_t getForceUse(audio_policy_force_use_t usage);
     virtual audio_io_handle_t getOutput(audio_stream_type_t stream,
                                         uint32_t samplingRate = 0,
                                         audio_format_t format = AUDIO_FORMAT_DEFAULT,
-                                        uint32_t channels = 0,
+                                        audio_channel_mask_t channelMask = 0,
                                         audio_output_flags_t flags =
-                                            AUDIO_OUTPUT_FLAG_NONE);
-#ifdef WITH_QCOM_LPA
-    virtual audio_io_handle_t getSession(audio_stream_type_t stream,
-                                        uint32_t format = AUDIO_FORMAT_DEFAULT,
-                                        audio_policy_output_flags_t flags = AUDIO_POLICY_OUTPUT_FLAG_DIRECT,
-                                        int32_t sessionId=-1);
-#endif
+                                                AUDIO_OUTPUT_FLAG_NONE);
     virtual status_t startOutput(audio_io_handle_t output,
                                  audio_stream_type_t stream,
                                  int session = 0);
@@ -82,17 +78,10 @@ public:
                                 audio_stream_type_t stream,
                                 int session = 0);
     virtual void releaseOutput(audio_io_handle_t output);
-#ifdef WITH_QCOM_LPA
-	virtual status_t pauseSession(audio_io_handle_t output, audio_stream_type_t stream);
-    virtual status_t resumeSession(audio_io_handle_t output, audio_stream_type_t stream);
-    virtual status_t closeSession(audio_io_handle_t output);
-#endif
     virtual audio_io_handle_t getInput(audio_source_t inputSource,
                                     uint32_t samplingRate = 0,
                                     audio_format_t format = AUDIO_FORMAT_DEFAULT,
-                                    uint32_t channels = 0,
-                                    audio_in_acoustics_t acoustics =
-                                            (audio_in_acoustics_t)0,
+                                    audio_channel_mask_t channelMask = 0,
                                     int audioSession = 0);
     virtual status_t startInput(audio_io_handle_t input);
     virtual status_t stopInput(audio_io_handle_t input);
@@ -108,10 +97,10 @@ public:
                                           audio_devices_t device);
 
     virtual uint32_t getStrategyForStream(audio_stream_type_t stream);
-    virtual uint32_t getDevicesForStream(audio_stream_type_t stream);
+    virtual audio_devices_t getDevicesForStream(audio_stream_type_t stream);
 
-    virtual audio_io_handle_t getOutputForEffect(effect_descriptor_t *desc);
-    virtual status_t registerEffect(effect_descriptor_t *desc,
+    virtual audio_io_handle_t getOutputForEffect(const effect_descriptor_t *desc);
+    virtual status_t registerEffect(const effect_descriptor_t *desc,
                                     audio_io_handle_t io,
                                     uint32_t strategy,
                                     int session,
@@ -119,6 +108,7 @@ public:
     virtual status_t unregisterEffect(int id);
     virtual status_t setEffectEnabled(int id, bool enabled);
     virtual bool isStreamActive(audio_stream_type_t stream, uint32_t inPastMs = 0) const;
+    virtual bool isSourceActive(audio_source_t source) const;
 
     virtual status_t queryDefaultPreProcessing(int audioSession,
                                               effect_descriptor_t *descriptors,
@@ -148,6 +138,9 @@ public:
     virtual status_t startTone(audio_policy_tone_t tone, audio_stream_type_t stream);
     virtual status_t stopTone();
     virtual status_t setVoiceVolume(float volume, int delayMs = 0);
+#ifdef QCOM_FM_ENABLED
+    virtual status_t setFmVolume(float volume, int delayMs = 0);
+#endif
 
 private:
                         AudioPolicyService();
@@ -171,7 +164,10 @@ private:
             STOP_TONE,
             SET_VOLUME,
             SET_PARAMETERS,
-            SET_VOICE_VOLUME
+            SET_VOICE_VOLUME,
+#ifdef QCOM_FM_ENABLED
+            SET_FM_VOLUME
+#endif
         };
 
         AudioCommandThread (String8 name);
@@ -189,8 +185,12 @@ private:
                     void        stopToneCommand();
                     status_t    volumeCommand(audio_stream_type_t stream, float volume,
                                             audio_io_handle_t output, int delayMs = 0);
-                    status_t    parametersCommand(int ioHandle, const char *keyValuePairs, int delayMs = 0);
+                    status_t    parametersCommand(audio_io_handle_t ioHandle,
+                                            const char *keyValuePairs, int delayMs = 0);
                     status_t    voiceVolumeCommand(float volume, int delayMs = 0);
+#ifdef QCOM_FM_ENABLED
+                    status_t    fmVolumeCommand(float volume, int delayMs = 0);
+#endif
                     void        insertCommand_l(AudioCommand *command, int delayMs = 0);
 
     private:
@@ -213,7 +213,7 @@ private:
 
         class ToneData {
         public:
-            ToneGenerator::tone_type mType;      // tone type (START_TONE only)
+            ToneGenerator::tone_type mType; // tone type (START_TONE only)
             audio_stream_type_t mStream;    // stream type (START_TONE only)
         };
 
@@ -235,6 +235,13 @@ private:
             float mVolume;
         };
 
+#ifdef QCOM_FM_ENABLED
+        class FmVolumeData {
+        public:
+            float mVolume;
+        };
+#endif
+
         Mutex   mLock;
         Condition mWaitWorkCV;
         Vector <AudioCommand *> mAudioCommands; // list of pending commands
@@ -245,8 +252,33 @@ private:
 
     class EffectDesc {
     public:
-        EffectDesc() {}
-        virtual ~EffectDesc() {}
+        EffectDesc(const char *name, const effect_uuid_t& uuid) :
+                        mName(strdup(name)),
+                        mUuid(uuid) { }
+        EffectDesc(const EffectDesc& orig) :
+                        mName(strdup(orig.mName)),
+                        mUuid(orig.mUuid) {
+                            // deep copy mParams
+                            for (size_t k = 0; k < orig.mParams.size(); k++) {
+                                effect_param_t *origParam = orig.mParams[k];
+                                // psize and vsize are rounded up to an int boundary for allocation
+                                size_t origSize = sizeof(effect_param_t) +
+                                                  ((origParam->psize + 3) & ~3) +
+                                                  ((origParam->vsize + 3) & ~3);
+                                effect_param_t *dupParam = (effect_param_t *) malloc(origSize);
+                                memcpy(dupParam, origParam, origSize);
+                                // This works because the param buffer allocation is also done by
+                                // multiples of 4 bytes originally. In theory we should memcpy only
+                                // the actual param size, that is without rounding vsize.
+                                mParams.add(dupParam);
+                            }
+                        }
+        /*virtual*/ ~EffectDesc() {
+            free(mName);
+            for (size_t k = 0; k < mParams.size(); k++) {
+                free(mParams[k]);
+            }
+        }
         char *mName;
         effect_uuid_t mUuid;
         Vector <effect_param_t *> mParams;
@@ -255,22 +287,26 @@ private:
     class InputSourceDesc {
     public:
         InputSourceDesc() {}
-        virtual ~InputSourceDesc() {}
+        /*virtual*/ ~InputSourceDesc() {
+            for (size_t j = 0; j < mEffects.size(); j++) {
+                delete mEffects[j];
+            }
+        }
         Vector <EffectDesc *> mEffects;
     };
 
 
     class InputDesc {
     public:
-        InputDesc() {}
-        virtual ~InputDesc() {}
-        int mSessionId;
+        InputDesc(int session) : mSessionId(session) {}
+        /*virtual*/ ~InputDesc() {}
+        const int mSessionId;
         Vector< sp<AudioEffect> >mEffects;
     };
 
-    static const char *kInputSourceNames[AUDIO_SOURCE_CNT -1];
+    static const char * const kInputSourceNames[AUDIO_SOURCE_CNT -1];
 
-    void setPreProcessorEnabled(InputDesc *inputDesc, bool enabled);
+    void setPreProcessorEnabled(const InputDesc *inputDesc, bool enabled);
     status_t loadPreProcessorConfig(const char *path);
     status_t loadEffects(cnode *root, Vector <EffectDesc *>& effects);
     EffectDesc *loadEffect(cnode *root);
@@ -294,8 +330,8 @@ private:
 
     mutable Mutex mLock;    // prevents concurrent access to AudioPolicy manager functions changing
                             // device connection state  or routing
-    sp <AudioCommandThread> mAudioCommandThread;    // audio commands thread
-    sp <AudioCommandThread> mTonePlaybackThread;     // tone playback thread
+    sp<AudioCommandThread> mAudioCommandThread;     // audio commands thread
+    sp<AudioCommandThread> mTonePlaybackThread;     // tone playback thread
     struct audio_policy_device *mpAudioPolicyDev;
     struct audio_policy *mpAudioPolicy;
     KeyedVector< audio_source_t, InputSourceDesc* > mInputSources;

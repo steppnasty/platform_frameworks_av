@@ -35,7 +35,7 @@ sp<MediaMetadataRetriever::DeathNotifier> MediaMetadataRetriever::sDeathNotifier
 const sp<IMediaPlayerService>& MediaMetadataRetriever::getService()
 {
     Mutex::Autolock lock(sServiceLock);
-    if (sService.get() == 0) {
+    if (sService == 0) {
         sp<IServiceManager> sm = defaultServiceManager();
         sp<IBinder> binder;
         do {
@@ -45,7 +45,7 @@ const sp<IMediaPlayerService>& MediaMetadataRetriever::getService()
             }
             ALOGW("MediaPlayerService not published, waiting...");
             usleep(500000); // 0.5 s
-        } while(true);
+        } while (true);
         if (sDeathNotifier == NULL) {
             sDeathNotifier = new DeathNotifier();
         }

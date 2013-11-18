@@ -122,19 +122,12 @@ status_t AudioEffect::set(const effect_uuid_t *type,
     mSessionId = sessionId;
 
     memset(&mDescriptor, 0, sizeof(effect_descriptor_t));
-    memcpy(&mDescriptor.type, EFFECT_UUID_NULL, sizeof(effect_uuid_t));
-    memcpy(&mDescriptor.uuid, EFFECT_UUID_NULL, sizeof(effect_uuid_t));
-
-    if (type != NULL) {
-        memcpy(&mDescriptor.type, type, sizeof(effect_uuid_t));
-    }
-    if (uuid != NULL) {
-        memcpy(&mDescriptor.uuid, uuid, sizeof(effect_uuid_t));
-    }
+    mDescriptor.type = *(type != NULL ? type : EFFECT_UUID_NULL);
+    mDescriptor.uuid = *(uuid != NULL ? uuid : EFFECT_UUID_NULL);
 
     mIEffectClient = new EffectClient(this);
 
-    iEffect = audioFlinger->createEffect(getpid(), (effect_descriptor_t *)&mDescriptor,
+    iEffect = audioFlinger->createEffect(getpid(), &mDescriptor,
             mIEffectClient, priority, io, mSessionId, &mStatus, &mId, &enabled);
 
     if (iEffect == 0 || (mStatus != NO_ERROR && mStatus != ALREADY_EXISTS)) {
@@ -159,7 +152,7 @@ status_t AudioEffect::set(const effect_uuid_t *type,
     mCblk->buffer = (uint8_t *)mCblk + bufOffset;
 
     iEffect->asBinder()->linkToDeath(mIEffectClient);
-    ALOGV("set() %p OK effect: %s id: %d status %d enabled %d, ", this, mDescriptor.name, mId, mStatus, mEnabled);
+    ALOGV("set() %p OK effect: %s id: %d status %d enabled %d", this, mDescriptor.name, mId, mStatus, mEnabled);
 
     return mStatus;
 }
@@ -174,7 +167,7 @@ AudioEffect::~AudioEffect()
             mIEffect->disconnect();
             mIEffect->asBinder()->unlinkToDeath(mIEffectClient);
         }
-         IPCThreadState::self()->flushCommands();
+        IPCThreadState::self()->flushCommands();
     }
     mIEffect.clear();
     mIEffectClient.clear();
@@ -202,7 +195,7 @@ bool AudioEffect::getEnabled() const
 status_t AudioEffect::setEnabled(bool enabled)
 {
     if (mStatus != NO_ERROR) {
-        return INVALID_OPERATION;
+        return (mStatus == ALREADY_EXISTS) ? (status_t) INVALID_OPERATION : mStatus;
     }
 
     status_t status = NO_ERROR;
@@ -231,7 +224,7 @@ status_t AudioEffect::command(uint32_t cmdCode,
 {
     if (mStatus != NO_ERROR && mStatus != ALREADY_EXISTS) {
         ALOGV("command() bad status %d", mStatus);
-        return INVALID_OPERATION;
+        return mStatus;
     }
 
     if (cmdCode == EFFECT_CMD_ENABLE || cmdCode == EFFECT_CMD_DISABLE) {
@@ -263,7 +256,7 @@ status_t AudioEffect::command(uint32_t cmdCode,
 status_t AudioEffect::setParameter(effect_param_t *param)
 {
     if (mStatus != NO_ERROR) {
-        return INVALID_OPERATION;
+        return (mStatus == ALREADY_EXISTS) ? (status_t) INVALID_OPERATION : mStatus;
     }
 
     if (param == NULL || param->psize == 0 || param->vsize == 0) {
@@ -281,7 +274,7 @@ status_t AudioEffect::setParameter(effect_param_t *param)
 status_t AudioEffect::setParameterDeferred(effect_param_t *param)
 {
     if (mStatus != NO_ERROR) {
-        return INVALID_OPERATION;
+        return (mStatus == ALREADY_EXISTS) ? (status_t) INVALID_OPERATION : mStatus;
     }
 
     if (param == NULL || param->psize == 0 || param->vsize == 0) {
@@ -307,7 +300,7 @@ status_t AudioEffect::setParameterDeferred(effect_param_t *param)
 status_t AudioEffect::setParameterCommit()
 {
     if (mStatus != NO_ERROR) {
-        return INVALID_OPERATION;
+        return (mStatus == ALREADY_EXISTS) ? (status_t) INVALID_OPERATION : mStatus;
     }
 
     Mutex::Autolock _l(mCblk->lock);
@@ -321,7 +314,7 @@ status_t AudioEffect::setParameterCommit()
 status_t AudioEffect::getParameter(effect_param_t *param)
 {
     if (mStatus != NO_ERROR && mStatus != ALREADY_EXISTS) {
-        return INVALID_OPERATION;
+        return mStatus;
     }
 
     if (param == NULL || param->psize == 0 || param->vsize == 0) {
@@ -341,8 +334,8 @@ status_t AudioEffect::getParameter(effect_param_t *param)
 void AudioEffect::binderDied()
 {
     ALOGW("IEffect died");
-    mStatus = NO_INIT;
-    if (mCbf) {
+    mStatus = DEAD_OBJECT;
+    if (mCbf != NULL) {
         status_t status = DEAD_OBJECT;
         mCbf(EVENT_ERROR, mUserData, &status);
     }
@@ -363,7 +356,7 @@ void AudioEffect::controlStatusChanged(bool controlGranted)
             mStatus = ALREADY_EXISTS;
         }
     }
-    if (mCbf) {
+    if (mCbf != NULL) {
         mCbf(EVENT_CONTROL_STATUS_CHANGED, mUserData, &controlGranted);
     }
 }
@@ -373,7 +366,7 @@ void AudioEffect::enableStatusChanged(bool enabled)
     ALOGV("enableStatusChanged %p enabled %d mCbf %p", this, enabled, mCbf);
     if (mStatus == ALREADY_EXISTS) {
         mEnabled = enabled;
-        if (mCbf) {
+        if (mCbf != NULL) {
             mCbf(EVENT_ENABLE_STATUS_CHANGED, mUserData, &enabled);
         }
     }
@@ -389,7 +382,7 @@ void AudioEffect::commandExecuted(uint32_t cmdCode,
         return;
     }
 
-    if (mCbf && cmdCode == EFFECT_CMD_SET_PARAM) {
+    if (mCbf != NULL && cmdCode == EFFECT_CMD_SET_PARAM) {
         effect_param_t *cmd = (effect_param_t *)cmdData;
         cmd->status = *(int32_t *)replyData;
         mCbf(EVENT_PARAMETER_CHANGED, mUserData, cmd);
@@ -412,7 +405,8 @@ status_t AudioEffect::queryEffect(uint32_t index, effect_descriptor_t *descripto
     return af->queryEffect(index, descriptor);
 }
 
-status_t AudioEffect::getEffectDescriptor(effect_uuid_t *uuid, effect_descriptor_t *descriptor)
+status_t AudioEffect::getEffectDescriptor(const effect_uuid_t *uuid,
+        effect_descriptor_t *descriptor) /*const*/
 {
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
     if (af == 0) return PERMISSION_DENIED;
@@ -479,4 +473,3 @@ status_t AudioEffect::guidToString(const effect_uuid_t *guid, char *str, size_t 
 
 
 }; // namespace android
-

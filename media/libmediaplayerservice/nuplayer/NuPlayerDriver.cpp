@@ -67,15 +67,22 @@ status_t NuPlayerDriver::setUID(uid_t uid) {
 status_t NuPlayerDriver::setDataSource(
         const char *url, const KeyedVector<String8, String8> *headers) {
     CHECK_EQ((int)mState, (int)UNINITIALIZED);
-    status_t nRet = mPlayer->setDataSource(url, headers);
-    LOGV("creating source %d",nRet);
+
+    mPlayer->setDataSource(url, headers);
+
     mState = STOPPED;
 
-    return nRet;
+    return OK;
 }
 
 status_t NuPlayerDriver::setDataSource(int fd, int64_t offset, int64_t length) {
-    return INVALID_OPERATION;
+    CHECK_EQ((int)mState, (int)UNINITIALIZED);
+
+    mPlayer->setDataSource(fd, offset, length);
+
+    mState = STOPPED;
+
+    return OK;
 }
 
 status_t NuPlayerDriver::setDataSource(const sp<IStreamSource> &source) {
@@ -96,13 +103,16 @@ status_t NuPlayerDriver::setVideoSurfaceTexture(
 }
 
 status_t NuPlayerDriver::prepare() {
+    sendEvent(MEDIA_SET_VIDEO_SIZE, 0, 0);
     return OK;
 }
 
 status_t NuPlayerDriver::prepareAsync() {
+    status_t err = prepare();
+
     notifyListener(MEDIA_PREPARED);
 
-    return OK;
+    return err;
 }
 
 status_t NuPlayerDriver::start() {
@@ -249,7 +259,29 @@ player_type NuPlayerDriver::playerType() {
 }
 
 status_t NuPlayerDriver::invoke(const Parcel &request, Parcel *reply) {
-    return INVALID_OPERATION;
+    if (reply == NULL) {
+        ALOGE("reply is a NULL pointer");
+        return BAD_VALUE;
+    }
+
+    int32_t methodId;
+    status_t ret = request.readInt32(&methodId);
+    if (ret != OK) {
+        ALOGE("Failed to retrieve the requested method to invoke");
+        return ret;
+    }
+
+    switch (methodId) {
+        case INVOKE_ID_SET_VIDEO_SCALING_MODE:
+        {
+            int mode = request.readInt32();
+            return mPlayer->setVideoScalingMode(mode);
+        }
+        default:
+        {
+            return INVALID_OPERATION;
+        }
+    }
 }
 
 void NuPlayerDriver::setAudioSink(const sp<AudioSink> &audioSink) {
@@ -319,7 +351,6 @@ status_t NuPlayerDriver::dump(int fd, const Vector<String16> &args) const {
 void NuPlayerDriver::notifyListener(int msg, int ext1, int ext2) {
     if (msg == MEDIA_PLAYBACK_COMPLETE || msg == MEDIA_ERROR) {
         mAtEOS = true;
-        pause();
     }
 
     sendEvent(msg, ext1, ext2);

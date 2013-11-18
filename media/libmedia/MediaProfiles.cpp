@@ -1,6 +1,7 @@
 /*
 **
 ** Copyright 2010, The Android Open Source Project
+** Copyright (c) 2010 - 2012, The Linux Foundation. All rights reserved.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -23,9 +24,9 @@
 #include <utils/Log.h>
 #include <utils/Vector.h>
 #include <cutils/properties.h>
-#include <expat.h>
+#include <libexpat/expat.h>
 #include <media/MediaProfiles.h>
-#include <media/stagefright/MediaDebug.h>
+#include <media/stagefright/foundation/ADebug.h>
 #include <OMX_Video.h>
 
 namespace android {
@@ -41,9 +42,14 @@ const MediaProfiles::NameToTagMap MediaProfiles::sVideoEncoderNameMap[] = {
 };
 
 const MediaProfiles::NameToTagMap MediaProfiles::sAudioEncoderNameMap[] = {
-    {"amrnb", AUDIO_ENCODER_AMR_NB},
-    {"amrwb", AUDIO_ENCODER_AMR_WB},
-    {"aac",   AUDIO_ENCODER_AAC},
+    {"amrnb",  AUDIO_ENCODER_AMR_NB},
+    {"amrwb",  AUDIO_ENCODER_AMR_WB},
+    {"aac",    AUDIO_ENCODER_AAC},
+    {"heaac",  AUDIO_ENCODER_HE_AAC},
+    {"aaceld", AUDIO_ENCODER_AAC_ELD},
+#ifdef QCOM_HARDWARE
+    {"lpcm",  AUDIO_ENCODER_LPCM},
+#endif
 };
 
 const MediaProfiles::NameToTagMap MediaProfiles::sFileFormatMap[] = {
@@ -81,31 +87,35 @@ const MediaProfiles::NameToTagMap MediaProfiles::sCamcorderQualityNameMap[] = {
     {"timelapse720p", CAMCORDER_QUALITY_TIME_LAPSE_720P},
     {"timelapse1080p", CAMCORDER_QUALITY_TIME_LAPSE_1080P},
     {"timelapseqvga", CAMCORDER_QUALITY_TIME_LAPSE_QVGA},
+    {"timelapsevga", CAMCORDER_QUALITY_TIME_LAPSE_VGA},
+    {"timelapsewvga", CAMCORDER_QUALITY_TIME_LAPSE_WVGA},
+    {"timelapsefwvga", CAMCORDER_QUALITY_TIME_LAPSE_FWVGA},
+    {"timelapsewqvga", CAMCORDER_QUALITY_TIME_LAPSE_WQVGA},
 };
 
 /*static*/ void
 MediaProfiles::logVideoCodec(const MediaProfiles::VideoCodec& codec)
 {
-    ALOGV("video codec:");
-    ALOGV("codec = %d", codec.mCodec);
-    ALOGV("bit rate: %d", codec.mBitRate);
-    ALOGV("frame width: %d", codec.mFrameWidth);
-    ALOGV("frame height: %d", codec.mFrameHeight);
-    ALOGV("frame rate: %d", codec.mFrameRate);
+ALOGV("video codec:");
+ALOGV("codec = %d", codec.mCodec);
+ALOGV("bit rate: %d", codec.mBitRate);
+ALOGV("frame width: %d", codec.mFrameWidth);
+ALOGV("frame height: %d", codec.mFrameHeight);
+ALOGV("frame rate: %d", codec.mFrameRate);
 }
 
 /*static*/ void
 MediaProfiles::logAudioCodec(const MediaProfiles::AudioCodec& codec)
 {
-    ALOGV("audio codec:");
-    ALOGV("codec = %d", codec.mCodec);
-    ALOGV("bit rate: %d", codec.mBitRate);
-    ALOGV("sample rate: %d", codec.mSampleRate);
-    ALOGV("number of channels: %d", codec.mChannels);
+ALOGV("audio codec:");
+ALOGV("codec = %d", codec.mCodec);
+ALOGV("bit rate: %d", codec.mBitRate);
+ALOGV("sample rate: %d", codec.mSampleRate);
+ALOGV("number of channels: %d", codec.mChannels);
 }
 
 /*static*/ void
-MediaProfiles::logVideoEncoderCap(const MediaProfiles::VideoEncoderCap& cap)
+    MediaProfiles::logVideoEncoderCap(const MediaProfiles::VideoEncoderCap& cap)
 {
     ALOGV("video encoder cap:");
     ALOGV("codec = %d", cap.mCodec);
@@ -353,7 +363,7 @@ void MediaProfiles::addImageEncodingQualityLevel(int cameraId, const char** atts
 {
     CHECK(!strcmp("quality", atts[0]));
     int quality = atoi(atts[1]);
-    ALOGV("%s: cameraId=%d, quality=%d\n", __func__, cameraId, quality);
+    ALOGV("%s: cameraId=%d, quality=%d", __func__, cameraId, quality);
     ImageEncodingQualityLevels *levels = findImageEncodingQualityLevels(cameraId);
 
     if (levels == NULL) {
@@ -375,7 +385,7 @@ MediaProfiles::getCameraId(const char** atts)
 
 void MediaProfiles::addStartTimeOffset(int cameraId, const char** atts)
 {
-    int offsetTimeMs = 700;
+    int offsetTimeMs = 1000;
     if (atts[2]) {
         CHECK(!strcmp("startOffsetMs", atts[2]));
         offsetTimeMs = atoi(atts[3]);
@@ -616,7 +626,7 @@ void MediaProfiles::checkAndAddRequiredProfilesIfNecessary() {
 /*static*/ MediaProfiles*
 MediaProfiles::getInstance()
 {
-    ALOGE("getInstance");
+    ALOGV("getInstance");
     Mutex::Autolock lock(sLock);
     if (!sIsInitialized) {
         char value[PROPERTY_VALUE_MAX];
@@ -624,22 +634,20 @@ MediaProfiles::getInstance()
             const char *defaultXmlFile = "/etc/media_profiles.xml";
             FILE *fp = fopen(defaultXmlFile, "r");
             if (fp == NULL) {
-                ALOGE("could not find media config xml file");
+                ALOGW("could not find media config xml file");
                 sInstance = createDefaultInstance();
             } else {
-                ALOGE("Guru :Else 1");
                 fclose(fp);  // close the file first.
                 sInstance = createInstanceFromXmlFile(defaultXmlFile);
             }
         } else {
-            ALOGE("Guru : Else 2");
             sInstance = createInstanceFromXmlFile(value);
         }
         CHECK(sInstance != NULL);
         sInstance->checkAndAddRequiredProfilesIfNecessary();
         sIsInitialized = true;
     }
-    LOGE("getInstance %x",sInstance);
+
     return sInstance;
 }
 
@@ -647,41 +655,22 @@ MediaProfiles::getInstance()
 MediaProfiles::createDefaultH263VideoEncoderCap()
 {
     return new MediaProfiles::VideoEncoderCap(
-#ifdef QCOM_HARDWARE
-        VIDEO_ENCODER_H263, 192000, 6000000, 176, 800, 144, 480, 1, 30);
-#else
         VIDEO_ENCODER_H263, 192000, 420000, 176, 352, 144, 288, 1, 20);
-#endif
 }
 
 /*static*/ MediaProfiles::VideoEncoderCap*
 MediaProfiles::createDefaultM4vVideoEncoderCap()
 {
     return new MediaProfiles::VideoEncoderCap(
-#ifdef QCOM_HARDWARE
-        VIDEO_ENCODER_MPEG_4_SP, 192000, 20 * 1000 * 1000, 176, 1920, 144, 1088, 1, 30);
-#else
         VIDEO_ENCODER_MPEG_4_SP, 192000, 420000, 176, 352, 144, 288, 1, 20);
-#endif
 }
 
-#ifdef QCOM_HARDWARE
-/*static*/ MediaProfiles::VideoEncoderCap*
-MediaProfiles::createDefaultH264VideoEncoderCap()
-{
-    return new MediaProfiles::VideoEncoderCap(
-        VIDEO_ENCODER_H264, 192000, 20 * 1000 * 1000, 176, 1920, 144, 1088, 1, 30);
-}
-#endif
 
 /*static*/ void
 MediaProfiles::createDefaultVideoEncoders(MediaProfiles *profiles)
 {
     profiles->mVideoEncoders.add(createDefaultH263VideoEncoderCap());
     profiles->mVideoEncoders.add(createDefaultM4vVideoEncoderCap());
-#ifdef QCOM_HARDWARE
-    profiles->mVideoEncoders.add(createDefaultH264VideoEncoderCap());
-#endif
 }
 
 /*static*/ MediaProfiles::CamcorderProfile*
@@ -825,6 +814,7 @@ MediaProfiles::createDefaultAudioEncoders(MediaProfiles *profiles)
     profiles->mAudioEncoders.add(createDefaultAmrNBEncoderCap());
 #ifdef QCOM_HARDWARE
     profiles->mAudioEncoders.add(createDefaultAacEncoderCap());
+    profiles->mAudioEncoders.add(createDefaultLpcmEncoderCap());
 #endif
 }
 
@@ -866,6 +856,13 @@ MediaProfiles::createDefaultAacEncoderCap()
 {
     return new MediaProfiles::AudioEncoderCap(
         AUDIO_ENCODER_AAC, 64000, 156000, 8000, 48000, 1, 2);
+}
+
+/*static*/ MediaProfiles::AudioEncoderCap*
+MediaProfiles::createDefaultLpcmEncoderCap()
+{
+    return new MediaProfiles::AudioEncoderCap(
+        AUDIO_ENCODER_LPCM, 768000, 4608000, 48000, 48000, 1, 6);
 }
 #endif
 
@@ -1128,7 +1125,6 @@ int MediaProfiles::getCamcorderProfileIndex(int cameraId, camcorder_quality qual
             break;
         }
     }
-    ALOGE("Guru : quality = %d, index = %d",quality,index);
     return index;
 }
 
@@ -1136,13 +1132,13 @@ int MediaProfiles::getCamcorderProfileParamByName(const char *name,
                                                   int cameraId,
                                                   camcorder_quality quality) const
 {
-    ALOGE("getCamcorderProfileParamByName: %s for camera %d, quality %d",
-         name, cameraId, quality);
+    ALOGV("getCamcorderProfileParamByName: %s for camera %d, quality %d",
+        name, cameraId, quality);
 
     int index = getCamcorderProfileIndex(cameraId, quality);
     if (index == -1) {
         ALOGE("The given camcorder profile camera %d quality %d is not found",
-             cameraId, quality);
+            cameraId, quality);
         return -1;
     }
 

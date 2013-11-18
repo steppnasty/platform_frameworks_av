@@ -52,13 +52,16 @@ LOCAL_SRC_FILES:=          \
 
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_SHARED_LIBRARIES := libcutils libutils
+LOCAL_SHARED_LIBRARIES :=      \
+    libaudioutils              \
+    libcutils                  \
+    libutils                   \
+    libvideoeditor_osal        \
+    libvideoeditor_videofilter \
 
 LOCAL_STATIC_LIBRARIES := \
-    libvideoeditor_osal \
     libvideoeditor_3gpwriter \
     libvideoeditor_mcs \
-    libvideoeditor_videofilters \
     libvideoeditor_stagefrightshells
 
 LOCAL_C_INCLUDES += \
@@ -69,8 +72,10 @@ LOCAL_C_INCLUDES += \
     $(TOP)/frameworks/av/libvideoeditor/vss/common/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/stagefrightshells/inc \
     $(TOP)/frameworks/av/services/audioflinger \
-    $(TOP)/frameworks/base/include/media/stagefright/openmax \
-    $(TOP)/vendor/qcom/opensource/omx/mm-core/omxcore/inc
+    $(TOP)/frameworks/native/include/media/openmax \
+    $(TOP)/vendor/qcom/opensource/omx/mm-core/omxcore/inc \
+    $(TOP)/system/media/audio_effects/include \
+    $(TOP)/system/media/audio_utils/include
 
 
 LOCAL_SHARED_LIBRARIES += libdl

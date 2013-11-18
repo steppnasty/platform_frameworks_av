@@ -18,7 +18,7 @@
 #define ANDROID_VIDEOEDITOR_PLAYER_H
 
 #include <media/MediaPlayerInterface.h>
-#include "AudioTrack.h"
+#include <media/AudioTrack.h>
 #include "M4xVSS_API.h"
 #include "VideoEditorMain.h"
 #include "VideoEditorTools.h"
@@ -45,13 +45,14 @@ class VideoEditorPlayer : public MediaPlayerInterface {
         virtual ssize_t         frameSize() const;
         virtual uint32_t        latency() const;
         virtual float           msecsPerFrame() const;
-        virtual status_t        getPosition(uint32_t *position);
-        virtual int             getSessionId();
+        virtual status_t        getPosition(uint32_t *position) const;
+        virtual status_t        getFramesWritten(uint32_t*) const;
+        virtual int             getSessionId() const;
 
         virtual status_t        open(
-                uint32_t sampleRate, int channelCount,
-                int format, int bufferCount,
-                AudioCallback cb, void *cookie);
+                uint32_t sampleRate, int channelCount, audio_channel_mask_t channelMask,
+                audio_format_t format, int bufferCount,
+                AudioCallback cb, void *cookie, audio_output_flags_t flags);
 
         virtual void            start();
         virtual ssize_t         write(const void* buffer, size_t size);
@@ -59,7 +60,7 @@ class VideoEditorPlayer : public MediaPlayerInterface {
         virtual void            flush();
         virtual void            pause();
         virtual void            close();
-        void setAudioStreamType(int streamType) { mStreamType = streamType; }
+        void setAudioStreamType(audio_stream_type_t streamType) { mStreamType = streamType; }
                 void            setVolume(float left, float right);
         virtual status_t        dump(int fd,const Vector<String16>& args) const;
 
@@ -73,7 +74,7 @@ class VideoEditorPlayer : public MediaPlayerInterface {
         AudioTrack*             mTrack;
         AudioCallback           mCallback;
         void *                  mCallbackCookie;
-        int                     mStreamType;
+        audio_stream_type_t     mStreamType;
         float                   mLeftVolume;
         float                   mRightVolume;
         float                   mMsecsPerFrame;

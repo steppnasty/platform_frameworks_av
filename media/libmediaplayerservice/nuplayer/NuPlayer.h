@@ -21,8 +21,6 @@
 #include <media/MediaPlayerInterface.h>
 #include <media/stagefright/foundation/AHandler.h>
 #include <media/stagefright/NativeWindowWrapper.h>
-#include <gui/SurfaceTextureClient.h>
-#include <surfaceflinger/Surface.h>
 
 namespace android {
 
@@ -39,8 +37,10 @@ struct NuPlayer : public AHandler {
 
     void setDataSource(const sp<IStreamSource> &source);
 
-    status_t setDataSource(
+    void setDataSource(
             const char *url, const KeyedVector<String8, String8> *headers);
+
+    void setDataSource(int fd, int64_t offset, int64_t length);
 
     void setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture);
     void setAudioSink(const sp<MediaPlayerBase::AudioSink> &sink);
@@ -54,22 +54,25 @@ struct NuPlayer : public AHandler {
 
     // Will notify the driver through "notifySeekComplete" once finished.
     void seekToAsync(int64_t seekTimeUs);
-public:
-    struct DASHHTTPLiveSource;
+
+    status_t setVideoScalingMode(int32_t mode);
 
 protected:
     virtual ~NuPlayer();
 
     virtual void onMessageReceived(const sp<AMessage> &msg);
 
+public:
+    struct NuPlayerStreamListener;
+    struct Source;
+
 private:
     struct Decoder;
+    struct GenericSource;
     struct HTTPLiveSource;
-    struct NuPlayerStreamListener;
     struct Renderer;
-    struct Source;
-    struct StreamingSource;
     struct RTSPSource;
+    struct StreamingSource;
 
     enum {
         kWhatSetDataSource              = '=DaS',
@@ -85,6 +88,7 @@ private:
         kWhatSeek                       = 'seek',
         kWhatPause                      = 'paus',
         kWhatResume                     = 'rsme',
+        kWhatPollDuration               = 'polD',
     };
 
     wp<NuPlayerDriver> mDriver;
@@ -100,18 +104,11 @@ private:
 
     bool mAudioEOS;
     bool mVideoEOS;
-    bool mPauseIndication;
 
     bool mScanSourcesPending;
     int32_t mScanSourcesGeneration;
 
-    enum NuSourceType {
-      kHttpLiveSource = 0,
-      kHttpDashSource,
-      kRtspSource,
-      kStreamingSource,
-      kDefaultSource,
-    };
+    int32_t mPollDurationGeneration;
 
     enum FlushStatus {
         NONE,
@@ -122,8 +119,6 @@ private:
         FLUSHED,
         SHUT_DOWN,
     };
-
-    NuSourceType mLiveSourceType;
 
     // Once the current flush is complete this indicates whether the
     // notion of time has changed.
@@ -140,7 +135,7 @@ private:
     int64_t mVideoLateByUs;
     int64_t mNumFramesTotal, mNumFramesDropped;
 
-    Mutex mLock;
+    int32_t mVideoScalingMode;
 
     status_t instantiateDecoder(bool audio, sp<Decoder> *decoder);
 
@@ -158,9 +153,8 @@ private:
     void finishReset();
     void postScanSources();
 
-    sp<Source> LoadCreateDashHttpSource(const char * uri, const KeyedVector<String8,
-                                        String8> *headers, bool uidValid, uid_t uid);
-
+    void schedulePollDuration();
+    void cancelPollDuration();
 
     DISALLOW_EVIL_CONSTRUCTORS(NuPlayer);
 };

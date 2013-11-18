@@ -1029,9 +1029,6 @@ M4OSA_ERR VideoEditorVideoDecoder_create(M4OSA_Context *pContext,
     VIDEOEDITOR_CHECK(OK == status, M4ERR_SF_DECODER_RSRC_FAIL);
 
     // Create the decoder
-    if (pDecShellContext->m_pVideoStreamhandler->m_videoWidth  * pDecShellContext->m_pVideoStreamhandler->m_videoHeight >= 1920 * 1080) {
-        flags |= OMXCodec::kUseMinBufferCount;
-    }
     pDecShellContext->mVideoDecoder = OMXCodec::Create(
         pDecShellContext->mClient.interface(),
         decoderMetadata, false, pDecShellContext->mReaderSource, NULL, flags);

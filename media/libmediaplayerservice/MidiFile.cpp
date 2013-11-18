@@ -86,7 +86,8 @@ MidiFile::MidiFile() :
     // create playback thread
     {
         Mutex::Autolock l(mMutex);
-        createThreadEtc(renderThread, this, "midithread", ANDROID_PRIORITY_AUDIO);
+        mThread = new MidiFileThread(this);
+        mThread->run("midithread", ANDROID_PRIORITY_AUDIO);
         mCondition.wait(mMutex);
         ALOGV("thread started");
     }
@@ -420,16 +421,12 @@ status_t MidiFile::setLooping(int loop)
 }
 
 status_t MidiFile::createOutputTrack() {
-    if (mAudioSink->open(pLibConfig->sampleRate, pLibConfig->numChannels, AUDIO_FORMAT_PCM_16_BIT, 2) != NO_ERROR) {
+    if (mAudioSink->open(pLibConfig->sampleRate, pLibConfig->numChannels,
+            CHANNEL_MASK_USE_CHANNEL_ORDER, AUDIO_FORMAT_PCM_16_BIT, 2) != NO_ERROR) {
         ALOGE("mAudioSink open failed");
         return ERROR_OPEN_FAILED;
     }
     return NO_ERROR;
-}
-
-int MidiFile::renderThread(void* p) {
-
-    return ((MidiFile*)p)->render();
 }
 
 int MidiFile::render() {

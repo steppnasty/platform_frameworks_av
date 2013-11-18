@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006-2011 The Android Open Source Project
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,16 +20,27 @@
 
 #include <utils/Log.h>
 
+#include <hardware/audio.h>
 #include <media/AudioParameter.h>
 
 namespace android {
 
-const char *AudioParameter::keyRouting = "routing";
-const char *AudioParameter::keySamplingRate = "sampling_rate";
-const char *AudioParameter::keyFormat = "format";
-const char *AudioParameter::keyChannels = "channels";
-const char *AudioParameter::keyFrameCount = "frame_count";
-const char *AudioParameter::keyInputSource = "input_source";
+// static
+const char * const AudioParameter::keyRouting = AUDIO_PARAMETER_STREAM_ROUTING;
+const char * const AudioParameter::keySamplingRate = AUDIO_PARAMETER_STREAM_SAMPLING_RATE;
+const char * const AudioParameter::keyFormat = AUDIO_PARAMETER_STREAM_FORMAT;
+const char * const AudioParameter::keyChannels = AUDIO_PARAMETER_STREAM_CHANNELS;
+const char * const AudioParameter::keyFrameCount = AUDIO_PARAMETER_STREAM_FRAME_COUNT;
+const char * const AudioParameter::keyInputSource = AUDIO_PARAMETER_STREAM_INPUT_SOURCE;
+const char * const AudioParameter::keyScreenState = AUDIO_PARAMETER_KEY_SCREEN_STATE;
+#ifdef QCOM_HARDWARE
+const char * const AudioParameter::keyHandleFm = AUDIO_PARAMETER_KEY_HANDLE_FM;
+const char * const AudioParameter::keyVoipCheck = AUDIO_PARAMETER_KEY_VOIP_CHECK;
+const char * const AudioParameter::keyFluenceType = AUDIO_PARAMETER_KEY_FLUENCE_TYPE;
+const char * const AudioParameter::keySSR = AUDIO_PARAMETER_KEY_SSR;
+const char * const AudioParameter::keyHandleA2dpDevice = AUDIO_PARAMETER_KEY_HANDLE_A2DP_DEVICE;
+const char * const AudioParameter::keyADSPStatus = AUDIO_PARAMETER_KEY_ADSP_STATUS;
+#endif
 
 AudioParameter::AudioParameter(const String8& keyValuePairs)
 {

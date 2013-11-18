@@ -20,6 +20,8 @@
 
 #include "NuPlayerSource.h"
 
+#include "ATSParser.h"
+
 #include <media/stagefright/foundation/AHandlerReflector.h>
 
 namespace android {
@@ -40,17 +42,19 @@ struct NuPlayer::RTSPSource : public NuPlayer::Source {
 
     virtual status_t feedMoreTSData();
 
-    virtual sp<MetaData> getFormat(bool audio);
     virtual status_t dequeueAccessUnit(bool audio, sp<ABuffer> *accessUnit);
 
     virtual status_t getDuration(int64_t *durationUs);
     virtual status_t seekTo(int64_t seekTimeUs);
-    virtual bool isSeekable();
+
+    virtual uint32_t flags() const;
 
     void onMessageReceived(const sp<AMessage> &msg);
 
 protected:
     virtual ~RTSPSource();
+
+    virtual sp<MetaData> getFormatMeta(bool audio);
 
 private:
     enum {
@@ -88,6 +92,7 @@ private:
     State mState;
     status_t mFinalResult;
     uint32_t mDisconnectReplyID;
+    bool mStartingUp;
 
     sp<ALooper> mLooper;
     sp<AHandlerReflector<RTSPSource> > mReflector;
@@ -96,6 +101,8 @@ private:
     Vector<TrackInfo> mTracks;
     sp<AnotherPacketSource> mAudioTrack;
     sp<AnotherPacketSource> mVideoTrack;
+
+    sp<ATSParser> mTSParser;
 
     int32_t mSeekGeneration;
 
@@ -106,6 +113,8 @@ private:
     void finishDisconnectIfPossible();
 
     void performSeek(int64_t seekTimeUs);
+
+    bool haveSufficientDataOnAllTracks();
 
     DISALLOW_EVIL_CONSTRUCTORS(RTSPSource);
 };

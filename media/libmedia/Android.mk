@@ -4,12 +4,6 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
     AudioParameter.cpp
-
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-    LOCAL_CFLAGS += -DQCOM_HARDWARE
-endif
-
-
 LOCAL_MODULE:= libmedia_helper
 LOCAL_MODULE_TAGS := optional
 
@@ -17,12 +11,25 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+LOCAL_SRC_FILES:= AudioParameter.cpp
+LOCAL_MODULE:= libaudioparameter
+LOCAL_MODULE_TAGS := optional
+LOCAL_SHARED_LIBRARIES := libutils
+
+include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+endif
+
 LOCAL_SRC_FILES:= \
     AudioTrack.cpp \
     IAudioFlinger.cpp \
     IAudioFlingerClient.cpp \
     IAudioTrack.cpp \
     IAudioRecord.cpp \
+    ICrypto.cpp \
+    IHDCP.cpp \
     AudioRecord.cpp \
     AudioSystem.cpp \
     mediaplayer.cpp \
@@ -31,6 +38,8 @@ LOCAL_SRC_FILES:= \
     IMediaRecorderClient.cpp \
     IMediaPlayer.cpp \
     IMediaRecorder.cpp \
+    IRemoteDisplay.cpp \
+    IRemoteDisplayClient.cpp \
     IStreamSource.cpp \
     Metadata.cpp \
     mediarecorder.cpp \
@@ -50,46 +59,42 @@ LOCAL_SRC_FILES:= \
     AudioEffect.cpp \
     Visualizer.cpp \
     MemoryLeakTrackUtil.cpp \
-    fixedfft.cpp.arm
+    SoundPool.cpp \
+    SoundPoolThread.cpp
 
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-    LOCAL_CFLAGS += -DQCOM_HARDWARE
+ifeq ($(BOARD_USES_LIBMEDIA_WITH_AUDIOPARAMETER),true)
+LOCAL_SRC_FILES+= \
+    AudioParameter.cpp
 endif
 
-ifeq ($(BOARD_USES_AUDIO_LEGACY),true)
-    LOCAL_SRC_FILES+= \
-        AudioParameter.cpp
-
-    LOCAL_CFLAGS += -DUSES_AUDIO_LEGACY
-endif
-
-ifeq ($(BOARD_USE_KINETO_COMPATIBILITY),true)
-    LOCAL_CFLAGS += -DUSE_KINETO_COMPATIBILITY
+ifeq ($(BOARD_USE_SAMSUNG_SEPARATEDSTREAM),true)
+LOCAL_CFLAGS += -DUSE_SAMSUNG_SEPARATEDSTREAM
 endif
 
 ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-	LOCAL_SRC_FILES += \
-		IDirectTrack.cpp \
-		IDirectTrackClient.cpp
+LOCAL_SRC_FILES += \
+    IDirectTrack.cpp \
+    IDirectTrackClient.cpp
+
+ifeq ($(TARGET_QCOM_AUDIO_VARIANT),caf)
+LOCAL_CFLAGS += -DQCOM_ENHANCED_AUDIO
+endif
 endif
 
 LOCAL_SHARED_LIBRARIES := \
-    libui libcutils libutils libbinder libsonivox libicuuc libexpat \
-    libcamera_client libstagefright_foundation \
-    libgui libdl
-
+	libui libcutils libutils libbinder libsonivox libicuuc libexpat \
+        libcamera_client libstagefright_foundation \
+        libgui libdl libaudioutils libmedia_native
 
 LOCAL_WHOLE_STATIC_LIBRARY := libmedia_helper
 
 LOCAL_MODULE:= libmedia
 
 LOCAL_C_INCLUDES := \
-    $(JNI_H_INCLUDE) \
     $(call include-path-for, graphics corecg) \
-    $(TOP)/frameworks/base/include/media/stagefright/openmax \
+    $(TOP)/frameworks/native/include/media/openmax \
     external/icu4c/common \
-    external/expat/lib \
-    system/media/audio_effects/include \
-    frameworks/base/include 
+    $(call include-path-for, audio-effects) \
+    $(call include-path-for, audio-utils)
 
 include $(BUILD_SHARED_LIBRARY)

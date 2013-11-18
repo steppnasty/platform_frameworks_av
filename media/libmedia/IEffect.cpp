@@ -83,8 +83,15 @@ public:
             size = *pReplySize;
         }
         data.writeInt32(size);
-        remote()->transact(COMMAND, data, &reply);
-        status_t status = reply.readInt32();
+
+        status_t status = remote()->transact(COMMAND, data, &reply);
+        if (status != NO_ERROR) {
+            if (pReplySize != NULL)
+                *pReplySize = 0;
+            return status;
+        }
+
+        status = reply.readInt32();
         size = reply.readInt32();
         if (size != 0 && pReplyData != NULL && pReplySize != NULL) {
             reply.read(pReplyData, size);
@@ -122,7 +129,7 @@ IMPLEMENT_META_INTERFACE(Effect, "android.media.IEffect");
 status_t BnEffect::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
-    switch(code) {
+    switch (code) {
         case ENABLE: {
             ALOGV("ENABLE");
             CHECK_INTERFACE(IEffect, data, reply);
@@ -179,10 +186,10 @@ status_t BnEffect::onTransact(
         } break;
 
         case GET_CBLK: {
-             CHECK_INTERFACE(IEffect, data, reply);
-             reply->writeStrongBinder(getCblk()->asBinder());
-             return NO_ERROR;
-         } break;
+            CHECK_INTERFACE(IEffect, data, reply);
+            reply->writeStrongBinder(getCblk()->asBinder());
+            return NO_ERROR;
+        } break;
 
         default:
             return BBinder::onTransact(code, data, reply, flags);
@@ -192,4 +199,3 @@ status_t BnEffect::onTransact(
 // ----------------------------------------------------------------------------
 
 }; // namespace android
-

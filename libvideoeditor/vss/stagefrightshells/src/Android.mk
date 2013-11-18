@@ -30,14 +30,14 @@ LOCAL_SRC_FILES:= \
 LOCAL_C_INCLUDES += \
     $(TOP)/frameworks/base/core/jni \
     $(TOP)/frameworks/base/include \
-    $(TOP)/frameworks/base/include/media \
-    $(TOP)/frameworks/base/media/libmediaplayerservice \
-    $(TOP)/frameworks/base/media/libstagefright \
-    $(TOP)/frameworks/base/media/libstagefright/include \
-    $(TOP)/frameworks/base/media/libstagefright/rtsp \
+    $(TOP)/frameworks/av/include/media \
+    $(TOP)/frameworks/av/media/libmediaplayerservice \
+    $(TOP)/frameworks/av/media/libstagefright \
+    $(TOP)/frameworks/av/media/libstagefright/include \
+    $(TOP)/frameworks/av/media/libstagefright/rtsp \
     $(JNI_H_INCLUDE) \
     $(call include-path-for, corecg graphics) \
-    $(TOP)/frameworks/base/include/media/stagefright/openmax \
+    $(TOP)/frameworks/native/include/media/openmax \
     $(TOP)/frameworks/base/core/jni/mediaeditor \
     $(TOP)/frameworks/av/libvideoeditor/vss/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/common/inc \
@@ -59,6 +59,7 @@ LOCAL_SHARED_LIBRARIES := \
     libstagefright_omx \
     libgui \
     libvideoeditorplayer \
+    libvideoeditor_osal \
     libdl
 
 LOCAL_CFLAGS += \
@@ -66,7 +67,6 @@ LOCAL_CFLAGS += \
 
 
 LOCAL_STATIC_LIBRARIES := \
-    libvideoeditor_osal \
     libstagefright_color_conversion
 
 

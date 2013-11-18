@@ -33,11 +33,14 @@ struct NuPlayer::StreamingSource : public NuPlayer::Source {
 
     virtual status_t feedMoreTSData();
 
-    virtual sp<MetaData> getFormat(bool audio);
     virtual status_t dequeueAccessUnit(bool audio, sp<ABuffer> *accessUnit);
+
+    virtual uint32_t flags() const;
 
 protected:
     virtual ~StreamingSource();
+
+    virtual sp<MetaData> getFormatMeta(bool audio);
 
 private:
     sp<IStreamSource> mSource;

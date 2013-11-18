@@ -37,19 +37,17 @@ struct NuPlayer::HTTPLiveSource : public NuPlayer::Source {
 
     virtual status_t feedMoreTSData();
 
-    virtual sp<MetaData> getFormat(bool audio);
     virtual status_t dequeueAccessUnit(bool audio, sp<ABuffer> *accessUnit);
 
     virtual status_t getDuration(int64_t *durationUs);
     virtual status_t seekTo(int64_t seekTimeUs);
 
-    virtual bool isSeekable();
-    virtual status_t getNewSeekTime(int64_t *newSeek);
-
-    virtual void notifyRenderingPosition(int64_t nRenderingTS);
+    virtual uint32_t flags() const;
 
 protected:
     virtual ~HTTPLiveSource();
+
+    virtual sp<MetaData> getFormatMeta(bool audio);
 
 private:
     enum Flags {
@@ -67,9 +65,6 @@ private:
     sp<ALooper> mLiveLooper;
     sp<LiveSession> mLiveSession;
     sp<ATSParser> mTSParser;
-
-    int64_t mNewSeekTime;
-    int64_t mCurrentPlayingTime;
 
     DISALLOW_EVIL_CONSTRUCTORS(HTTPLiveSource);
 };

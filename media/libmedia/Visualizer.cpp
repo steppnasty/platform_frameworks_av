@@ -27,8 +27,7 @@
 #include <cutils/bitops.h>
 
 #include <media/Visualizer.h>
-
-extern void fixed_fft_real(int n, int32_t *v);
+#include <audio_utils/fixedfft.h>
 
 namespace android {
 
@@ -42,6 +41,7 @@ Visualizer::Visualizer (int32_t priority,
         mCaptureRate(CAPTURE_RATE_DEF),
         mCaptureSize(CAPTURE_SIZE_DEF),
         mSampleRate(44100000),
+        mScalingMode(VISUALIZER_SCALING_MODE_NORMALIZED),
         mCaptureCallBack(NULL),
         mCaptureCbkUser(NULL)
 {
@@ -54,7 +54,7 @@ Visualizer::~Visualizer()
 
 status_t Visualizer::setEnabled(bool enabled)
 {
-    Mutex::Autolock _l(mLock);
+    Mutex::Autolock _l(mCaptureLock);
 
     sp<CaptureThread> t = mCaptureThread;
     if (t != 0) {
@@ -67,14 +67,14 @@ status_t Visualizer::setEnabled(bool enabled)
             }
         }
         t->mLock.lock();
-     }
+    }
 
     status_t status = AudioEffect::setEnabled(enabled);
 
     if (status == NO_ERROR) {
         if (t != 0) {
             if (enabled) {
-                t->run("AudioTrackThread");
+                t->run("Visualizer");
             } else {
                 t->requestExit();
             }
@@ -93,7 +93,7 @@ status_t Visualizer::setCaptureCallBack(capture_cbk_t cbk, void* user, uint32_t 
     if (rate > CAPTURE_RATE_MAX) {
         return BAD_VALUE;
     }
-    Mutex::Autolock _l(mLock);
+    Mutex::Autolock _l(mCaptureLock);
 
     if (mEnabled) {
         return INVALID_OPERATION;
@@ -115,10 +115,6 @@ status_t Visualizer::setCaptureCallBack(capture_cbk_t cbk, void* user, uint32_t 
 
     if (cbk != NULL) {
         mCaptureThread = new CaptureThread(*this, rate, ((flags & CAPTURE_CALL_JAVA) != 0));
-        if (mCaptureThread == 0) {
-            ALOGE("Could not create callback thread");
-            return NO_INIT;
-        }
     }
     ALOGV("setCaptureCallBack() rate: %d thread %p flags 0x%08x",
             rate, mCaptureThread.get(), mCaptureFlags);
@@ -133,31 +129,56 @@ status_t Visualizer::setCaptureSize(uint32_t size)
         return BAD_VALUE;
     }
 
-    Mutex::Autolock _l(mLock);
+    Mutex::Autolock _l(mCaptureLock);
     if (mEnabled) {
         return INVALID_OPERATION;
     }
 
-    union {
-        uint32_t buf32[sizeof(effect_param_t) / sizeof(uint32_t) + 2];
-	effect_param_t bufp;
-    };
-    effect_param_t *p = &bufp;
+    uint32_t buf32[sizeof(effect_param_t) / sizeof(uint32_t) + 2];
+    effect_param_t *p = (effect_param_t *)buf32;
 
     p->psize = sizeof(uint32_t);
     p->vsize = sizeof(uint32_t);
-    int32_t const vpcs = VISUALIZER_PARAM_CAPTURE_SIZE;
-    memcpy(&p->data, &vpcs, sizeof(vpcs));
-    memcpy(&p->data+sizeof(int32_t), &size, sizeof(size));
+    *(int32_t *)p->data = VISUALIZER_PARAM_CAPTURE_SIZE;
+    *((int32_t *)p->data + 1)= size;
     status_t status = setParameter(p);
 
     ALOGV("setCaptureSize size %d  status %d p->status %d", size, status, p->status);
 
     if (status == NO_ERROR) {
         status = p->status;
+        if (status == NO_ERROR) {
+            mCaptureSize = size;
+        }
     }
+
+    return status;
+}
+
+status_t Visualizer::setScalingMode(uint32_t mode) {
+    if ((mode != VISUALIZER_SCALING_MODE_NORMALIZED)
+            && (mode != VISUALIZER_SCALING_MODE_AS_PLAYED)) {
+        return BAD_VALUE;
+    }
+
+    Mutex::Autolock _l(mCaptureLock);
+
+    uint32_t buf32[sizeof(effect_param_t) / sizeof(uint32_t) + 2];
+    effect_param_t *p = (effect_param_t *)buf32;
+
+    p->psize = sizeof(uint32_t);
+    p->vsize = sizeof(uint32_t);
+    *(int32_t *)p->data = VISUALIZER_PARAM_SCALING_MODE;
+    *((int32_t *)p->data + 1)= mode;
+    status_t status = setParameter(p);
+
+    ALOGV("setScalingMode mode %d  status %d p->status %d", mode, status, p->status);
+
     if (status == NO_ERROR) {
-        mCaptureSize = size;
+        status = p->status;
+        if (status == NO_ERROR) {
+            mScalingMode = mode;
+        }
     }
 
     return status;
@@ -177,7 +198,7 @@ status_t Visualizer::getWaveForm(uint8_t *waveform)
         uint32_t replySize = mCaptureSize;
         status = command(VISUALIZER_CMD_CAPTURE, 0, NULL, &replySize, waveform);
         ALOGV("getWaveForm() command returned %d", status);
-        if (replySize == 0) {
+        if ((status == NO_ERROR) && (replySize == 0)) {
             status = NOT_ENOUGH_DATA;
         }
     } else {
@@ -239,7 +260,7 @@ status_t Visualizer::doFft(uint8_t *fft, uint8_t *waveform)
 
 void Visualizer::periodicCapture()
 {
-    Mutex::Autolock _l(mLock);
+    Mutex::Autolock _l(mCaptureLock);
     ALOGV("periodicCapture() %p mCaptureCallBack %p mCaptureFlags 0x%08x",
             this, mCaptureCallBack, mCaptureFlags);
     if (mCaptureCallBack != NULL &&
@@ -275,30 +296,40 @@ void Visualizer::periodicCapture()
 
 uint32_t Visualizer::initCaptureSize()
 {
-    union {
-        uint32_t buf32[sizeof(effect_param_t) / sizeof(uint32_t) + 2];
-        effect_param_t p;
-    };
+    uint32_t buf32[sizeof(effect_param_t) / sizeof(uint32_t) + 2];
+    effect_param_t *p = (effect_param_t *)buf32;
 
-    p.psize = sizeof(uint32_t);
-    p.vsize = sizeof(uint32_t);
-    int32_t const vpcs = VISUALIZER_PARAM_CAPTURE_SIZE;
-    memcpy(&p.data, &vpcs, sizeof(vpcs));
-    status_t status = getParameter(&p);
+    p->psize = sizeof(uint32_t);
+    p->vsize = sizeof(uint32_t);
+    *(int32_t *)p->data = VISUALIZER_PARAM_CAPTURE_SIZE;
+    status_t status = getParameter(p);
 
     if (status == NO_ERROR) {
-        status = p.status;
+        status = p->status;
     }
 
     uint32_t size = 0;
     if (status == NO_ERROR) {
-        memcpy(&size, &p.data+sizeof(int32_t), sizeof(int32_t));
+        size = *((int32_t *)p->data + 1);
     }
     mCaptureSize = size;
 
     ALOGV("initCaptureSize size %d status %d", mCaptureSize, status);
 
     return size;
+}
+
+void Visualizer::controlStatusChanged(bool controlGranted) {
+    if (controlGranted) {
+        // this Visualizer instance regained control of the effect, reset the scaling mode
+        //   and capture size as has been cached through it.
+        ALOGV("controlStatusChanged(true) causes effect parameter reset:");
+        ALOGV("    scaling mode reset to %d", mScalingMode);
+        setScalingMode(mScalingMode);
+        ALOGV("    capture size reset to %d", mCaptureSize);
+        setCaptureSize(mCaptureSize);
+    }
+    AudioEffect::controlStatusChanged(controlGranted);
 }
 
 //-------------------------------------------------------------------------
@@ -322,14 +353,4 @@ bool Visualizer::CaptureThread::threadLoop()
     return false;
 }
 
-status_t Visualizer::CaptureThread::readyToRun()
-{
-    return NO_ERROR;
-}
-
-void Visualizer::CaptureThread::onFirstRef()
-{
-}
-
 }; // namespace android
-

@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2009 The Android Open Source Project
- * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +22,6 @@
 #include <binder/Parcel.h>
 #include <media/IOMX.h>
 #include <media/stagefright/foundation/ADebug.h>
-#include <surfaceflinger/ISurface.h>
-#include <gui/Surface.h>
 
 namespace android {
 
@@ -60,9 +57,10 @@ public:
         : BpInterface<IOMX>(impl) {
     }
 
-    virtual bool livesLocally(pid_t pid) {
+    virtual bool livesLocally(node_id node, pid_t pid) {
         Parcel data, reply;
         data.writeInterfaceToken(IOMX::getInterfaceDescriptor());
+        data.writeIntPtr((intptr_t)node);
         data.writeInt32(pid);
         remote()->transact(LIVES_LOCALLY, data, &reply);
 
@@ -420,7 +418,7 @@ status_t BnOMX::onTransact(
             CHECK_INTERFACE(IOMX, data, reply);
             node_id node = (void *)data.readIntPtr();
             pid_t pid = (pid_t)data.readInt32();
-            reply->writeInt32(livesLocally(pid));
+            reply->writeInt32(livesLocally(node, pid));
 
             return OK;
         }

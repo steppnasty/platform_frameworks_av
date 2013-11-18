@@ -19,11 +19,11 @@
 #define ANDROID_MIDIFILE_H
 
 #include <media/MediaPlayerInterface.h>
-#include <media/AudioTrack.h>
 #include <libsonivox/eas.h>
 
 namespace android {
 
+// Note that the name MidiFile is misleading; this actually represents a MIDI file player
 class MidiFile : public MediaPlayerInterface {
 public:
                         MidiFile();
@@ -65,7 +65,6 @@ public:
 private:
             status_t    createOutputTrack();
             status_t    reset_nosync();
-    static  int         renderThread(void*);
             int         render();
             void        updateState(){ EAS_State(mEasData, mEasHandle, &mState); }
 
@@ -78,12 +77,35 @@ private:
     EAS_I32             mDuration;
     EAS_STATE           mState;
     EAS_FILE            mFileLocator;
-    int                 mStreamType;
+    audio_stream_type_t mStreamType;
     bool                mLoop;
     volatile bool       mExit;
     bool                mPaused;
     volatile bool       mRender;
     pid_t               mTid;
+
+    class MidiFileThread : public Thread {
+    public:
+        MidiFileThread(MidiFile *midiPlayer) : mMidiFile(midiPlayer) {
+        }
+
+    protected:
+        virtual ~MidiFileThread() {}
+
+    private:
+        MidiFile *mMidiFile;
+
+        bool threadLoop() {
+            int result;
+            result = mMidiFile->render();
+            return false;
+        }
+
+        MidiFileThread(const MidiFileThread &);
+        MidiFileThread &operator=(const MidiFileThread &);
+    };
+
+    sp<MidiFileThread> mThread;
 };
 
 }; // namespace android

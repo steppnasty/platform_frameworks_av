@@ -22,13 +22,11 @@
 #include <cutils/log.h>
 #include <gui/SurfaceTexture.h>
 #include <gui/SurfaceTextureClient.h>
-#include <stagefright/MediaBuffer.h>
-#include <stagefright/MediaDebug.h>
-#include <stagefright/MetaData.h>
-#include <surfaceflinger/Surface.h>
+#include <media/stagefright/MediaBuffer.h>
+#include <media/stagefright/MetaData.h>
+#include <media/stagefright/foundation/ADebug.h>
 #include "VideoEditorTools.h"
 
-//#define PREVIEW_DEBUG 1
 #define CHECK_EGL_ERROR CHECK(EGL_SUCCESS == eglGetError())
 #define CHECK_GL_ERROR CHECK(GLenum(GL_NO_ERROR) == glGetError())
 
@@ -104,7 +102,7 @@ static const char fSrcNegative[] =
     "void main() {\n"
     "  vec4 rgb = texture2D(texSampler, texCoords);\n"
     "  vec4 yuv = rgb2yuv * rgb;\n"
-    "  yuv = vec4(255.0 - yuv.x, yuv.y, yuv.z, yuv.w);\n"
+    "  yuv = vec4(255.0 - yuv.x, yuv.y, yuv.z, 1.0);\n"
     "  gl_FragColor = yuv2rgb * yuv;\n"
     "}\n";
 
@@ -147,7 +145,7 @@ NativeWindowRenderer::NativeWindowRenderer(sp<ANativeWindow> nativeWindow,
 // other threads wait until the request is finished by GL thread.
 
 int NativeWindowRenderer::threadStart(void* self) {
-    LOGD("create thread");
+    ALOGD("create thread");
     ((NativeWindowRenderer*)self)->glThread();
     return 0;
 }
@@ -182,7 +180,7 @@ void NativeWindowRenderer::glThread() {
         mThreadCmd = CMD_IDLE;
         mCond.broadcast();
     }
-    LOGD("quit");
+    ALOGD("quit");
 }
 
 void NativeWindowRenderer::initializeEGL() {
@@ -271,7 +269,7 @@ void NativeWindowRenderer::createProgram(
             char* buf = (char*) malloc(infoLen);
             if (buf) {
                 glGetProgramInfoLog(program, infoLen, NULL, buf);
-                LOGE("Program link log:\n%s\n", buf);
+                ALOGE("Program link log:\n%s\n", buf);
                 free(buf);
             }
         }
@@ -301,7 +299,7 @@ void NativeWindowRenderer::loadShader(GLenum shaderType, const char* pSource,
         char* buf = (char*) malloc(infoLen);
         if (buf) {
             glGetShaderInfoLog(shader, infoLen, NULL, buf);
-            LOGE("Shader compile log:\n%s\n", buf);
+            ALOGE("Shader compile log:\n%s\n", buf);
             free(buf);
         }
         glDeleteShader(shader);
@@ -386,7 +384,7 @@ void NativeWindowRenderer::queueInternalBuffer(ANativeWindow *anw,
     native_window_set_buffers_timestamp(anw, timeUs * 1000);
     status_t err = anw->queueBuffer(anw, buffer->graphicBuffer().get());
     if (err != 0) {
-        LOGE("queueBuffer failed with error %s (%d)", strerror(-err), -err);
+        ALOGE("queueBuffer failed with error %s (%d)", strerror(-err), -err);
         return;
     }
 
@@ -400,30 +398,15 @@ void NativeWindowRenderer::queueExternalBuffer(ANativeWindow* anw,
             HAL_PIXEL_FORMAT_YV12);
     native_window_set_usage(anw, GRALLOC_USAGE_SW_WRITE_OFTEN);
 
-    native_window_set_buffer_count(anw, 3);
-
     ANativeWindowBuffer* anb;
-    anw->dequeueBuffer(anw, &anb);
+    CHECK(NO_ERROR == native_window_dequeue_buffer_and_wait(anw, &anb));
     CHECK(anb != NULL);
-
-    sp<GraphicBuffer> buf(new GraphicBuffer(anb, false));
-    CHECK(NO_ERROR == anw->lockBuffer(anw, buf->getNativeBuffer()));
 
     // Copy the buffer
     uint8_t* img = NULL;
+    sp<GraphicBuffer> buf(new GraphicBuffer(anb, false));
     buf->lock(GRALLOC_USAGE_SW_WRITE_OFTEN, (void**)(&img));
     copyI420Buffer(buffer, img, width, height, buf->getStride());
-
-#if PREVIEW_DEBUG
-    FILE *fp1 = fopen("/sdcard/pre_test_yuv.raw", "ab");
-    if(fp1 == NULL)
-        LOGE("Errors file can not be created");
-    else {
-        fwrite(img, buf->getWidth() * buf->getHeight()* 3/2, 1, fp1);
-        fclose(fp1);
-    }
-#endif
-
     buf->unlock();
     CHECK(NO_ERROR == anw->queueBuffer(anw, buf->getNativeBuffer()));
 }
@@ -554,7 +537,7 @@ void NativeWindowRenderer::sendRequest() {
 }
 
 RenderInput* NativeWindowRenderer::createRenderInput() {
-    LOGD("new render input %d", mNextTextureId);
+    ALOGD("new render input %d", mNextTextureId);
     RenderInput* input = new RenderInput(this, mNextTextureId);
 
     startRequest(CMD_RESERVE_TEXTURE);
@@ -567,7 +550,7 @@ RenderInput* NativeWindowRenderer::createRenderInput() {
 }
 
 void NativeWindowRenderer::destroyRenderInput(RenderInput* input) {
-    LOGD("destroy render input %d", input->mTextureId);
+    ALOGD("destroy render input %d", input->mTextureId);
     GLuint textureId = input->mTextureId;
     delete input;
 
@@ -586,10 +569,8 @@ RenderInput::RenderInput(NativeWindowRenderer* renderer, GLuint textureId)
     : mRenderer(renderer)
     , mTextureId(textureId) {
     mST = new SurfaceTexture(mTextureId);
-    uint32_t outWidth, outHeight, outTransform;
-    mST->connect(NATIVE_WINDOW_API_MEDIA, &outWidth, &outHeight, &outTransform);
-
     mSTC = new SurfaceTextureClient(mST);
+    native_window_connect(mSTC.get(), NATIVE_WINDOW_API_MEDIA);
 }
 
 RenderInput::~RenderInput() {
