@@ -24,9 +24,9 @@
 #include <media/openmax/OMX_IVCommon.h>
 #include <MetadataBufferType.h>
 
-#include <surfaceflinger/ISurfaceComposer.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
-#include <surfaceflinger/IGraphicBufferAlloc.h>
+#include <gui/ISurfaceComposer.h>
+#include <gui/SurfaceComposerClient.h>
+#include <gui/IGraphicBufferAlloc.h>
 #include <OMX_Component.h>
 
 #include <utils/Log.h>

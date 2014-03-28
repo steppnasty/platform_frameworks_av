@@ -29,7 +29,7 @@
 #include "WifiDisplaySource.h"
 
 #include <binder/IServiceManager.h>
-#include <surfaceflinger/ISurfaceComposer.h>
+#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
 #include <media/IHDCP.h>
 #include <media/stagefright/foundation/ABitReader.h>
