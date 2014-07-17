@@ -2267,7 +2267,7 @@ status_t OMXCodec::cancelBufferToNativeWindow(BufferInfo *info) {
     CHECK_EQ((int)info->mStatus, (int)OWNED_BY_US);
     CODEC_LOGV("Calling cancelBuffer on buffer %p", info->mBuffer);
     int err = mNativeWindow->cancelBuffer(
-        mNativeWindow.get(), info->mMediaBuffer->graphicBuffer().get());
+        mNativeWindow.get(), info->mMediaBuffer->graphicBuffer().get(), -1);
     if (err != 0) {
       CODEC_LOGE("cancelBuffer failed w/ error 0x%08x", err);
 
@@ -2415,7 +2415,7 @@ status_t OMXCodec::pushBlankBuffersToNativeWindow() {
         }
 
         err = mNativeWindow->queueBuffer(mNativeWindow.get(),
-                buf->getNativeBuffer());
+                buf->getNativeBuffer(), -1);
         if (err != NO_ERROR) {
             ALOGE("error pushing blank frames: queueBuffer failed: %s (%d)",
                     strerror(-err), -err);
@@ -2430,7 +2430,7 @@ error:
     if (err != NO_ERROR) {
         // Clean up after an error.
         if (anb != NULL) {
-            mNativeWindow->cancelBuffer(mNativeWindow.get(), anb);
+            mNativeWindow->cancelBuffer(mNativeWindow.get(), anb, -1);
         }
 
         native_window_api_disconnect(mNativeWindow.get(),

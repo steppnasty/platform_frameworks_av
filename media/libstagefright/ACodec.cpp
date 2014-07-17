@@ -736,7 +736,7 @@ status_t ACodec::cancelBufferToNativeWindow(BufferInfo *info) {
          mComponentName.c_str(), info->mBufferID);
 
     int err = mNativeWindow->cancelBuffer(
-        mNativeWindow.get(), info->mGraphicBuffer.get());
+        mNativeWindow.get(), info->mGraphicBuffer.get(), -1);
 
     CHECK_EQ(err, 0);
 
@@ -2511,7 +2511,7 @@ status_t ACodec::pushBlankBuffersToNativeWindow() {
         }
 
         err = mNativeWindow->queueBuffer(mNativeWindow.get(),
-                buf->getNativeBuffer());
+                buf->getNativeBuffer(), -1);
         if (err != NO_ERROR) {
             ALOGE("error pushing blank frames: queueBuffer failed: %s (%d)",
                     strerror(-err), -err);
@@ -2526,7 +2526,7 @@ error:
     if (err != NO_ERROR) {
         // Clean up after an error.
         if (anb != NULL) {
-            mNativeWindow->cancelBuffer(mNativeWindow.get(), anb);
+            mNativeWindow->cancelBuffer(mNativeWindow.get(), anb, -1);
         }
 
         native_window_api_disconnect(mNativeWindow.get(),
@@ -3109,7 +3109,7 @@ void ACodec::BaseState::onOutputBufferDrained(const sp<AMessage> &msg) {
         status_t err;
         if ((err = mCodec->mNativeWindow->queueBuffer(
                     mCodec->mNativeWindow.get(),
-                    info->mGraphicBuffer.get())) == OK) {
+                    info->mGraphicBuffer.get(), -1)) == OK) {
             info->mStatus = BufferInfo::OWNED_BY_NATIVE_WINDOW;
         } else {
             mCodec->signalError(OMX_ErrorUndefined, err);

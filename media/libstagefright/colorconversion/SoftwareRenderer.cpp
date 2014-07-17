@@ -251,7 +251,7 @@ void SoftwareRenderer::render(
 
     CHECK_EQ(0, mapper.unlock(buf->handle));
 
-    if ((err = mNativeWindow->queueBuffer(mNativeWindow.get(), buf)) != 0) {
+    if ((err = mNativeWindow->queueBuffer(mNativeWindow.get(), buf, -1)) != 0) {
         ALOGW("Surface::queueBuffer returned error %d", err);
     }
     buf = NULL;

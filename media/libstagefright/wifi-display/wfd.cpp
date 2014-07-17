@@ -97,11 +97,6 @@ void RemoteDisplayClient::onDisplayConnected(
     Rect layerStackRect(1280, 720);  // XXX fix this.
     Rect displayRect(1280, 720);
 
-    mComposerClient->setDisplayProjection(
-        0, 0 /* 0 degree rotation */,
-        layerStackRect,
-        displayRect);
-
     SurfaceComposerClient::closeGlobalTransaction();
 }
 
