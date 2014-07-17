@@ -382,7 +382,7 @@ void NativeWindowRenderer::queueInternalBuffer(ANativeWindow *anw,
     int64_t timeUs;
     CHECK(buffer->meta_data()->findInt64(kKeyTime, &timeUs));
     native_window_set_buffers_timestamp(anw, timeUs * 1000);
-    status_t err = anw->queueBuffer(anw, buffer->graphicBuffer().get());
+    status_t err = anw->queueBuffer(anw, buffer->graphicBuffer().get(), -1);
     if (err != 0) {
         ALOGE("queueBuffer failed with error %s (%d)", strerror(-err), -err);
         return;
@@ -408,7 +408,7 @@ void NativeWindowRenderer::queueExternalBuffer(ANativeWindow* anw,
     buf->lock(GRALLOC_USAGE_SW_WRITE_OFTEN, (void**)(&img));
     copyI420Buffer(buffer, img, width, height, buf->getStride());
     buf->unlock();
-    CHECK(NO_ERROR == anw->queueBuffer(anw, buf->getNativeBuffer()));
+    CHECK(NO_ERROR == anw->queueBuffer(anw, buf->getNativeBuffer(), -1));
 }
 
 void NativeWindowRenderer::copyI420Buffer(MediaBuffer* src, uint8_t* dst,

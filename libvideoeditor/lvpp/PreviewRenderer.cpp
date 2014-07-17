@@ -130,7 +130,7 @@ void PreviewRenderer::renderYV12() {
     if (mBuf!= NULL) {
         CHECK_EQ(0, mapper.unlock(mBuf->handle));
 
-        if ((err = mSurface->ANativeWindow::queueBuffer(mSurface.get(), mBuf)) != 0) {
+        if ((err = mSurface->ANativeWindow::queueBuffer(mSurface.get(), mBuf, -1)) != 0) {
             ALOGW("Surface::queueBuffer returned error %d", err);
         }
     }
