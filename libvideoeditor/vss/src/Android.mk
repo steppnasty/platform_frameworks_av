@@ -73,7 +73,7 @@ LOCAL_C_INCLUDES += \
     $(TOP)/frameworks/av/libvideoeditor/vss/stagefrightshells/inc \
     $(TOP)/frameworks/av/services/audioflinger \
     $(TOP)/frameworks/native/include/media/openmax \
-    $(TOP)/vendor/qcom/opensource/omx/mm-core/omxcore/inc \
+    $(TOP)/vendor/qcom/opensource/omx/mm-core/inc \
     $(TOP)/system/media/audio_effects/include \
     $(TOP)/system/media/audio_utils/include
 

@@ -46,7 +46,7 @@ LOCAL_C_INCLUDES += \
     $(TOP)/frameworks/av/libvideoeditor/osal/inc \
     $(TOP)/frameworks/av/libvideoeditor/include \
     $(TOP)/frameworks/av/libvideoeditor/vss/stagefrightshells/inc \
-    $(TOP)/vendor/qcom/opensource/omx/mm-core/omxcore/inc
+    $(TOP)/vendor/qcom/opensource/omx/mm-core/inc
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
