@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <utils/Log.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -107,6 +108,7 @@ static int FwdLockFile_AcquireSession(int fileDesc) {
         }
         pthread_mutex_unlock(&sessionAcquisitionMutex);
         if (i == MAX_NUM_SESSIONS) {
+            ALOGE("Too many sessions opened at the same time");
             errno = ENFILE;
         }
     }
@@ -289,15 +291,6 @@ int FwdLockFile_attach(int fileDesc) {
         }
     }
     return (sessionId >= 0) ? 0 : -1;
-}
-
-int FwdLockFile_open(const char *pFilename) {
-    int fileDesc = open(pFilename, O_RDONLY);
-    if (fileDesc >= 0 && FwdLockFile_attach(fileDesc) < 0) {
-        (void)close(fileDesc);
-        fileDesc = -1;
-    }
-    return fileDesc;
 }
 
 ssize_t FwdLockFile_read(int fileDesc, void *pBuffer, size_t numBytes) {

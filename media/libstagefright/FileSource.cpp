@@ -138,7 +138,7 @@ sp<DecryptHandle> FileSource::DrmInitialization(const char *mime) {
 
     if (mDecryptHandle == NULL) {
         mDecryptHandle = mDrmManagerClient->openDecryptSession(
-                mFd, mOffset, mLength);
+                mFd, mOffset, mLength, mime);
     }
 
     if (mDecryptHandle == NULL) {

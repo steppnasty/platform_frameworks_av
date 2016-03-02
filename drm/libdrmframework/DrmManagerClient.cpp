@@ -64,8 +64,8 @@ status_t DrmManagerClient::saveRights(
     return mDrmManagerClientImpl->saveRights(mUniqueId, drmRights, rightsPath, contentPath);
 }
 
-String8 DrmManagerClient::getOriginalMimeType(const String8& path) {
-    return mDrmManagerClientImpl->getOriginalMimeType(mUniqueId, path);
+String8 DrmManagerClient::getOriginalMimeType(const String8& path, int fd) {
+    return mDrmManagerClientImpl->getOriginalMimeType(mUniqueId, path, fd);
 }
 
 int DrmManagerClient::getDrmObjectType(const String8& path, const String8& mimeType) {
@@ -116,12 +116,18 @@ status_t DrmManagerClient::getAllSupportInfo(int* length, DrmSupportInfo** drmSu
     return mDrmManagerClientImpl->getAllSupportInfo(mUniqueId, length, drmSupportInfoArray);
 }
 
-sp<DecryptHandle> DrmManagerClient::openDecryptSession(int fd, off64_t offset, off64_t length) {
-    return mDrmManagerClientImpl->openDecryptSession(mUniqueId, fd, offset, length);
+sp<DecryptHandle> DrmManagerClient::openDecryptSession(
+        int fd, off64_t offset, off64_t length, const char* mime) {
+
+    return mDrmManagerClientImpl->openDecryptSession(
+                    mUniqueId, fd, offset, length, mime);
 }
 
-sp<DecryptHandle> DrmManagerClient::openDecryptSession(const char* uri) {
-    return mDrmManagerClientImpl->openDecryptSession(mUniqueId, uri);
+sp<DecryptHandle> DrmManagerClient::openDecryptSession(
+        const char* uri, const char* mime) {
+
+    return mDrmManagerClientImpl->openDecryptSession(
+                    mUniqueId, uri, mime);
 }
 
 sp<DecryptHandle> DrmManagerClient::openDecryptSession(

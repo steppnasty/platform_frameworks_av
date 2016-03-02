@@ -266,12 +266,12 @@ status_t DrmManager::saveRights(int uniqueId, const DrmRights& drmRights,
     return result;
 }
 
-String8 DrmManager::getOriginalMimeType(int uniqueId, const String8& path) {
+String8 DrmManager::getOriginalMimeType(int uniqueId, const String8& path, int fd) {
     Mutex::Autolock _l(mLock);
     const String8 plugInId = getSupportedPlugInIdFromPath(uniqueId, path);
     if (EMPTY_STRING != plugInId) {
         IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInId);
-        return rDrmEngine.getOriginalMimeType(uniqueId, path);
+        return rDrmEngine.getOriginalMimeType(uniqueId, path, fd);
     }
     return EMPTY_STRING;
 }
@@ -426,7 +426,9 @@ status_t DrmManager::getAllSupportInfo(
     return DRM_NO_ERROR;
 }
 
-DecryptHandle* DrmManager::openDecryptSession(int uniqueId, int fd, off64_t offset, off64_t length) {
+DecryptHandle* DrmManager::openDecryptSession(
+        int uniqueId, int fd, off64_t offset, off64_t length, const char* mime) {
+
     Mutex::Autolock _l(mDecryptLock);
     status_t result = DRM_ERROR_CANNOT_HANDLE;
     Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
@@ -438,7 +440,7 @@ DecryptHandle* DrmManager::openDecryptSession(int uniqueId, int fd, off64_t offs
         for (unsigned int index = 0; index < plugInIdList.size(); index++) {
             String8 plugInId = plugInIdList.itemAt(index);
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInId);
-            result = rDrmEngine.openDecryptSession(uniqueId, handle, fd, offset, length);
+            result = rDrmEngine.openDecryptSession(uniqueId, handle, fd, offset, length, mime);
 
             if (DRM_NO_ERROR == result) {
                 ++mDecryptSessionId;
@@ -453,7 +455,8 @@ DecryptHandle* DrmManager::openDecryptSession(int uniqueId, int fd, off64_t offs
     return handle;
 }
 
-DecryptHandle* DrmManager::openDecryptSession(int uniqueId, const char* uri) {
+DecryptHandle* DrmManager::openDecryptSession(
+        int uniqueId, const char* uri, const char* mime) {
     Mutex::Autolock _l(mDecryptLock);
     status_t result = DRM_ERROR_CANNOT_HANDLE;
     Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
@@ -465,7 +468,7 @@ DecryptHandle* DrmManager::openDecryptSession(int uniqueId, const char* uri) {
         for (unsigned int index = 0; index < plugInIdList.size(); index++) {
             String8 plugInId = plugInIdList.itemAt(index);
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInId);
-            result = rDrmEngine.openDecryptSession(uniqueId, handle, uri);
+            result = rDrmEngine.openDecryptSession(uniqueId, handle, uri, mime);
 
             if (DRM_NO_ERROR == result) {
                 ++mDecryptSessionId;

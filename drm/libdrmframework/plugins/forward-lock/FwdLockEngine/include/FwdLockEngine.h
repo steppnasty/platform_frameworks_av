@@ -150,11 +150,12 @@ DrmInfo* onAcquireDrmInfo(int uniqueId,
  * Retrieves the mime type embedded inside the original content.
  *
  * @param uniqueId Unique identifier for a session
- * @param path Path of the protected content
+ * @param path Path of the conent or null.
+ * @param fd descriptor of the protected content as a file source
  * @return String8
  *       Returns mime-type of the original content, such as "video/mpeg"
  */
-String8 onGetOriginalMimeType(int uniqueId, const String8& path);
+String8 onGetOriginalMimeType(int uniqueId, const String8& path, int fd);
 
 /**
  * Retrieves the type of the protected object (content, rights, etc..)
@@ -498,6 +499,14 @@ ssize_t onPread(int uniqueId,
 #endif
 
 private:
+
+    static const String8 Description;
+    static const String8 FileSuffixes[];
+    static const String8 MimeTypes[];
+    static bool IsFileSuffixSupported(const String8& suffix);
+    static bool IsMimeTypeSupported(const String8& mime);
+    static void AddSupportedMimeTypes(DrmSupportInfo *info);
+    static void AddSupportedFileSuffixes(DrmSupportInfo *info);
 
 /**
  * Session Class for Forward Lock Conversion. An object of this class is created

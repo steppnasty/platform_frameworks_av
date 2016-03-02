@@ -310,7 +310,13 @@ DrmInfo* BpDrmManagerService::acquireDrmInfo(int uniqueId, const DrmInfoRequest*
         const String8 key = keyIt.next();
         data.writeString8(key);
         const String8 value = drmInforequest->get(key);
-        data.writeString8((value == String8("")) ? String8("NULL") : value);
+        if (key == String8("FileDescriptorKey")) {
+            int fd = -1;
+            sscanf(value.string(), "FileDescriptor[%d]", &fd);
+            data.writeFileDescriptor(fd);
+        } else {
+            data.writeString8((value == String8("")) ? String8("NULL") : value);
+        }
     }
 
     remote()->transact(ACQUIRE_DRM_INFO, data, &reply);
@@ -368,13 +374,18 @@ status_t BpDrmManagerService::saveRights(
     return reply.readInt32();
 }
 
-String8 BpDrmManagerService::getOriginalMimeType(int uniqueId, const String8& path) {
+String8 BpDrmManagerService::getOriginalMimeType(int uniqueId, const String8& path, int fd) {
     ALOGV("Get Original MimeType");
     Parcel data, reply;
 
     data.writeInterfaceToken(IDrmManagerService::getInterfaceDescriptor());
     data.writeInt32(uniqueId);
     data.writeString8(path);
+    int32_t isFdValid = (fd >= 0);
+    data.writeInt32(isFdValid);
+    if (isFdValid) {
+        data.writeFileDescriptor(fd);
+    }
 
     remote()->transact(GET_ORIGINAL_MIMETYPE, data, &reply);
     return reply.readString8();
@@ -600,7 +611,7 @@ status_t BpDrmManagerService::getAllSupportInfo(
 }
 
 DecryptHandle* BpDrmManagerService::openDecryptSession(
-            int uniqueId, int fd, off64_t offset, off64_t length) {
+            int uniqueId, int fd, off64_t offset, off64_t length, const char* mime) {
     ALOGV("Entering BpDrmManagerService::openDecryptSession");
     Parcel data, reply;
 
@@ -609,6 +620,11 @@ DecryptHandle* BpDrmManagerService::openDecryptSession(
     data.writeFileDescriptor(fd);
     data.writeInt64(offset);
     data.writeInt64(length);
+    String8 mimeType;
+    if (mime) {
+        mimeType = mime;
+    }
+    data.writeString8(mimeType);
 
     remote()->transact(OPEN_DECRYPT_SESSION, data, &reply);
 
@@ -620,13 +636,20 @@ DecryptHandle* BpDrmManagerService::openDecryptSession(
     return handle;
 }
 
-DecryptHandle* BpDrmManagerService::openDecryptSession(int uniqueId, const char* uri) {
-    ALOGV("Entering BpDrmManagerService::openDecryptSession");
+DecryptHandle* BpDrmManagerService::openDecryptSession(
+        int uniqueId, const char* uri, const char* mime) {
+
+    ALOGV("Entering BpDrmManagerService::openDecryptSession: mime=%s", mime? mime: "NULL");
     Parcel data, reply;
 
     data.writeInterfaceToken(IDrmManagerService::getInterfaceDescriptor());
     data.writeInt32(uniqueId);
     data.writeString8(String8(uri));
+    String8 mimeType;
+    if (mime) {
+        mimeType = mime;
+    }
+    data.writeString8(mimeType);
 
     remote()->transact(OPEN_DECRYPT_SESSION_FROM_URI, data, &reply);
 
@@ -985,8 +1008,15 @@ status_t BnDrmManagerService::onTransact(
         const int size = data.readInt32();
         for (int index = 0; index < size; ++index) {
             const String8 key(data.readString8());
-            const String8 value(data.readString8());
-            drmInfoRequest->put(key, (value == String8("NULL")) ? String8("") : value);
+            if (key == String8("FileDescriptorKey")) {
+                char buffer[16];
+                int fd = data.readFileDescriptor();
+                sprintf(buffer, "%lu", (unsigned long)fd);
+                drmInfoRequest->put(key, String8(buffer));
+            } else {
+                const String8 value(data.readString8());
+                drmInfoRequest->put(key, (value == String8("NULL")) ? String8("") : value);
+            }
         }
 
         DrmInfo* drmInfo = acquireDrmInfo(uniqueId, drmInfoRequest);
@@ -1055,7 +1085,12 @@ status_t BnDrmManagerService::onTransact(
 
         const int uniqueId = data.readInt32();
         const String8 path = data.readString8();
-        const String8 originalMimeType = getOriginalMimeType(uniqueId, path);
+        const int32_t isFdValid = data.readInt32();
+        int fd = -1;
+        if (isFdValid) {
+            fd = data.readFileDescriptor();
+        }
+        const String8 originalMimeType = getOriginalMimeType(uniqueId, path, fd);
 
         reply->writeString8(originalMimeType);
         return DRM_NO_ERROR;
@@ -1292,8 +1327,10 @@ status_t BnDrmManagerService::onTransact(
 
         const off64_t offset = data.readInt64();
         const off64_t length = data.readInt64();
+        const String8 mime = data.readString8();
+
         DecryptHandle* handle
-            = openDecryptSession(uniqueId, fd, offset, length);
+            = openDecryptSession(uniqueId, fd, offset, length, mime.string());
 
         if (NULL != handle) {
             writeDecryptHandleToParcelData(handle, reply);
@@ -1310,8 +1347,9 @@ status_t BnDrmManagerService::onTransact(
 
         const int uniqueId = data.readInt32();
         const String8 uri = data.readString8();
+        const String8 mime = data.readString8();
 
-        DecryptHandle* handle = openDecryptSession(uniqueId, uri.string());
+        DecryptHandle* handle = openDecryptSession(uniqueId, uri.string(), mime.string());
 
         if (NULL != handle) {
             writeDecryptHandleToParcelData(handle, reply);
@@ -1480,4 +1518,3 @@ status_t BnDrmManagerService::onTransact(
         return BBinder::onTransact(code, data, reply, flags);
     }
 }
-

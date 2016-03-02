@@ -14,15 +14,13 @@
  * limitations under the License.
  */
 
-#include <sys/types.h>
-#include <unistd.h>
-#include <grp.h>
+#define LOG_TAG "drmserver"
+//#define LOG_NDEBUG 0
 
 #include <binder/IPCThreadState.h>
 #include <binder/ProcessState.h>
 #include <binder/IServiceManager.h>
 #include <utils/Log.h>
-#include <private/android_filesystem_config.h>
 
 #include <DrmManagerService.h>
 
@@ -32,7 +30,7 @@ int main(int argc, char** argv)
 {
     sp<ProcessState> proc(ProcessState::self());
     sp<IServiceManager> sm = defaultServiceManager();
-    ALOGI("ServiceManager: %p", sm.get());
+    ALOGV("ServiceManager: %p", sm.get());
     DrmManagerService::instantiate();
     ProcessState::self()->startThreadPool();
     IPCThreadState::self()->joinThreadPool();

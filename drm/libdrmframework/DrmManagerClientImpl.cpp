@@ -147,10 +147,10 @@ status_t DrmManagerClientImpl::saveRights(int uniqueId, const DrmRights& drmRigh
 }
 
 String8 DrmManagerClientImpl::getOriginalMimeType(
-        int uniqueId, const String8& path) {
+        int uniqueId, const String8& path, int fd) {
     String8 mimeType = EMPTY_STRING;
     if (EMPTY_STRING != path) {
-        mimeType = getDrmManagerService()->getOriginalMimeType(uniqueId, path);
+        mimeType = getDrmManagerService()->getOriginalMimeType(uniqueId, path, fd);
     }
     return mimeType;
 }
@@ -255,15 +255,19 @@ status_t DrmManagerClientImpl::getAllSupportInfo(
 }
 
 sp<DecryptHandle> DrmManagerClientImpl::openDecryptSession(
-            int uniqueId, int fd, off64_t offset, off64_t length) {
-    return getDrmManagerService()->openDecryptSession(uniqueId, fd, offset, length);
+            int uniqueId, int fd, off64_t offset,
+            off64_t length, const char* mime) {
+
+    return getDrmManagerService()->openDecryptSession(
+                uniqueId, fd, offset, length, mime);
 }
 
 sp<DecryptHandle> DrmManagerClientImpl::openDecryptSession(
-        int uniqueId, const char* uri) {
+        int uniqueId, const char* uri, const char* mime) {
+
     DecryptHandle* handle = NULL;
     if (NULL != uri) {
-        handle = getDrmManagerService()->openDecryptSession(uniqueId, uri);
+        handle = getDrmManagerService()->openDecryptSession(uniqueId, uri, mime);
     }
     return handle;
 }

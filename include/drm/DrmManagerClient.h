@@ -66,19 +66,21 @@ public:
      * @param[in] fd File descriptor of the protected content to be decrypted
      * @param[in] offset Start position of the content
      * @param[in] length The length of the protected content
+     * @param[in] mime Mime type of the protected content if it is not NULL or empty
      * @return
      *     Handle for the decryption session
      */
-    sp<DecryptHandle> openDecryptSession(int fd, off64_t offset, off64_t length);
+    sp<DecryptHandle> openDecryptSession(int fd, off64_t offset, off64_t length, const char* mime);
 
     /**
      * Open the decrypt session to decrypt the given protected content
      *
      * @param[in] uri Path of the protected content to be decrypted
+     * @param[in] mime Mime type of the protected content if it is not NULL or empty
      * @return
      *     Handle for the decryption session
      */
-    sp<DecryptHandle> openDecryptSession(const char* uri);
+    sp<DecryptHandle> openDecryptSession(const char* uri, const char* mime);
 
     /**
      * Open the decrypt session to decrypt the given protected content
@@ -277,10 +279,11 @@ public:
      * Retrieves the mime type embedded inside the original content
      *
      * @param[in] path the path of the protected content
+     * @param[in] fd the file descriptor of the protected content
      * @return String8
      *     Returns mime-type of the original content, such as "video/mpeg"
      */
-    String8 getOriginalMimeType(const String8& path);
+    String8 getOriginalMimeType(const String8& path, int fd);
 
     /**
      * Retrieves the type of the protected object (content, rights, etc..)

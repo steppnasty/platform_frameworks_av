@@ -109,7 +109,7 @@ public:
     virtual status_t saveRights(int uniqueId, const DrmRights& drmRights,
             const String8& rightsPath, const String8& contentPath) = 0;
 
-    virtual String8 getOriginalMimeType(int uniqueId, const String8& path) = 0;
+    virtual String8 getOriginalMimeType(int uniqueId, const String8& path, int fd) = 0;
 
     virtual int getDrmObjectType(
             int uniqueId, const String8& path, const String8& mimeType) = 0;
@@ -140,9 +140,12 @@ public:
     virtual status_t getAllSupportInfo(
             int uniqueId, int* length, DrmSupportInfo** drmSupportInfoArray) = 0;
 
-    virtual DecryptHandle* openDecryptSession(int uniqueId, int fd, off64_t offset, off64_t length) = 0;
+    virtual DecryptHandle* openDecryptSession(
+                int uniqueId, int fd, off64_t offset,
+                off64_t length, const char* mime) = 0;
 
-    virtual DecryptHandle* openDecryptSession(int uniqueId, const char* uri) = 0;
+    virtual DecryptHandle* openDecryptSession(
+                int uniqueId, const char* uri, const char* mime) = 0;
 
     virtual DecryptHandle* openDecryptSession(
             int uniqueId, const DrmBuffer& buf, const String8& mimeType) = 0;
@@ -197,7 +200,7 @@ public:
     virtual status_t saveRights(int uniqueId, const DrmRights& drmRights,
             const String8& rightsPath, const String8& contentPath);
 
-    virtual String8 getOriginalMimeType(int uniqueId, const String8& path);
+    virtual String8 getOriginalMimeType(int uniqueId, const String8& path, int fd);
 
     virtual int getDrmObjectType(int uniqueId, const String8& path, const String8& mimeType);
 
@@ -226,9 +229,12 @@ public:
     virtual status_t getAllSupportInfo(
             int uniqueId, int* length, DrmSupportInfo** drmSupportInfoArray);
 
-    virtual DecryptHandle* openDecryptSession(int uniqueId, int fd, off64_t offset, off64_t length);
+    virtual DecryptHandle* openDecryptSession(
+                int uniqueId, int fd, off64_t offset, off64_t length,
+                const char* mime);
 
-    virtual DecryptHandle* openDecryptSession(int uniqueId, const char* uri);
+    virtual DecryptHandle* openDecryptSession(
+                int uniqueId, const char* uri, const char* mime);
 
     virtual DecryptHandle* openDecryptSession(
             int uniqueId, const DrmBuffer& buf, const String8& mimeType);
