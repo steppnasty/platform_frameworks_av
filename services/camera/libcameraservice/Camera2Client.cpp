@@ -57,7 +57,6 @@ Camera2Client::Camera2Client(const sp<CameraService>& cameraService,
     ATRACE_CALL();
     ALOGI("Camera %d: Opened", cameraId);
 
-    property_set("ctl.start", "qcamerasvr");
     mDevice = new Camera2Device(cameraId);
 
     SharedParameters::Lock l(mParameters);

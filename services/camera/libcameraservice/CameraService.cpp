@@ -126,7 +126,6 @@ status_t CameraService::getCameraInfo(int cameraId,
     }
 
     struct camera_info info;
-    property_set("ctl.start", "qcamerasvr");
     status_t rc = mModule->get_camera_info(cameraId, &info);
     cameraInfo->facing = info.facing;
     cameraInfo->orientation = info.orientation;
