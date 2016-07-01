@@ -120,9 +120,7 @@ public:
         audio_channel_mask_t channelMask, size_t* buffSize);
 
     static status_t setVoiceVolume(float volume);
-#ifdef QCOM_FM_ENABLED
     static status_t setFmVolume(float volume);
-#endif
 
     // return the number of audio frames written by AudioFlinger to audio HAL and
     // audio dsp to DAC since the output on which the specified stream is playing
@@ -151,10 +149,7 @@ public:
         INPUT_CLOSED,
         INPUT_CONFIG_CHANGED,
         STREAM_CONFIG_CHANGED,
-#ifdef QCOM_HARDWARE
-        A2DP_OUTPUT_STATE,
         EFFECT_CONFIG_CHANGED,
-#endif
         NUM_CONFIG_EVENTS
     };
 
@@ -197,6 +192,7 @@ public:
     static status_t setDeviceConnectionState(audio_devices_t device, audio_policy_dev_state_t state, const char *device_address);
     static audio_policy_dev_state_t getDeviceConnectionState(audio_devices_t device, const char *device_address);
     static status_t setPhoneState(audio_mode_t state);
+    static status_t setInCallPhoneState(audio_mode_t state);
     static status_t setForceUse(audio_policy_force_use_t usage, audio_policy_forced_cfg_t config);
     static audio_policy_forced_cfg_t getForceUse(audio_policy_force_use_t usage);
     static audio_io_handle_t getOutput(audio_stream_type_t stream,

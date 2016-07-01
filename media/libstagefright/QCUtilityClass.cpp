@@ -71,6 +71,16 @@ status_t QCUtilityClass::helper_StageFrightRecoder_hfr(sp<MetaData> &meta, sp<Me
             ALOGE("HFR mode is supported only upto WQVGA resolution");
             return INVALID_OPERATION;
         }
+    } else if (!strncmp(mDeviceName, "msm8974", 7)) {
+        if (hfr && (width * height > 1920*1088)) {
+            ALOGE("HFR mode is supported only upto 1080P resolution");
+            return INVALID_OPERATION;
+        }
+    } else if (!strncmp(mDeviceName, "msm8610", 7)) {
+        if (hfr && (width * height > 1920*1088)) {
+            ALOGE("HFR mode is supported only upto 1080P resolution");
+            return INVALID_OPERATION;
+        }
     } else {
         if(hfr && ((videoEncoder != VIDEO_ENCODER_H264) || (width * height > 800*480))) {
             ALOGE("HFR mode is supported only upto WVGA and H264 codec.");
@@ -240,31 +250,26 @@ void QCUtilityClass::helper_OMXCodec_setBFrames(OMX_VIDEO_PARAM_AVCTYPE &h264typ
     return;
 }
 //--  END  :: AUDIO disable and change in profile base on property -----
-void QCUtilityClass::helper_addMediaCodec(Vector<MediaCodecList::CodecInfo> &mCodecInfos,
-                                          KeyedVector<AString, size_t> &mTypes,
-                                          bool encoder, const char *name,
-                                          const char *type, uint32_t quirks) {
-    mCodecInfos.push();
-    MediaCodecList::CodecInfo *info = &mCodecInfos.editItemAt(mCodecInfos.size() - 1);
-    info->mName = name;
-    info->mIsEncoder = encoder;
-    ssize_t index = mTypes.indexOfKey(type);
-    uint32_t bit = mTypes.valueAt(index);
-    info->mTypes |= 1ul << bit;
-    info->mQuirks = quirks;
-}
+void QCUtilityClass::helper_mpeg4extractor_checkAC3EAC3(MediaBuffer *buffer,
+                                                        sp<MetaData> &format,
+                                                        size_t size) {
+    bool mMakeBigEndian = false;
+    const char *mime;
 
-uint32_t QCUtilityClass::helper_getCodecSpecificQuirks(KeyedVector<AString, size_t> &mCodecQuirks,
-                                                       Vector<AString> quirks) {
-    size_t i = 0, numQuirks = quirks.size();
-    uint32_t bit = 0, value = 0;
-    for (i = 0; i < numQuirks; i++)
-    {
-        ssize_t index = mCodecQuirks.indexOfKey(quirks.itemAt(i));
-        bit = mCodecQuirks.valueAt(index);
-        value |= 1ul << bit;
+    if (format->findCString(kKeyMIMEType, &mime)
+            && (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AC3) ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_EAC3))) {
+        mMakeBigEndian = true;
     }
-    return value;
+    if (mMakeBigEndian && *((uint8_t *)buffer->data())==0x0b &&
+            *((uint8_t *)buffer->data()+1)==0x77 ) {
+        size_t count = 0;
+        for(count=0;count<size;count+=2) { // size is always even bytes in ac3/ec3 read
+            uint8_t tmp = *((uint8_t *)buffer->data() + count);
+            *((uint8_t *)buffer->data() + count) = *((uint8_t *)buffer->data()+count+1);
+            *((uint8_t *)buffer->data() + count+1) = tmp;
+        }
+    }
 }
 
 //- returns NULL if we dont really need a new extractor (or cannot),
@@ -278,10 +283,14 @@ sp<MediaExtractor> QCUtilityClass::helper_MediaExtractor_CreateIfNeeded(sp<Media
                                                      const sp<DataSource> &source,
                                                      const char *mime) {
     bool bCheckExtendedExtractor = false;
-    bool videoOnly = true;
-    bool amrwbAudio = false;
+    bool videoTrackFound = false;
+    bool audioTrackFound = false;
+    bool amrwbAudio      = false;
+    int numOfTrack = 0;
+
     if (defaultExt != NULL) {
         for (size_t i = 0; i < defaultExt->countTracks(); ++i) {
+            ++numOfTrack;
             sp<MetaData> meta = defaultExt->getTrackMetaData(i);
             const char *_mime;
             CHECK(meta->findCString(kKeyMIMEType, &_mime));
@@ -289,15 +298,35 @@ sp<MediaExtractor> QCUtilityClass::helper_MediaExtractor_CreateIfNeeded(sp<Media
             String8 mime = String8(_mime);
 
             if (!strncasecmp(mime.string(), "audio/", 6)) {
-                videoOnly = false;
+                audioTrackFound = true;
 
                 amrwbAudio = !strncasecmp(mime.string(),
                                           MEDIA_MIMETYPE_AUDIO_AMR_WB,
                                           strlen(MEDIA_MIMETYPE_AUDIO_AMR_WB));
                 if (amrwbAudio) break;
+            }else if(!strncasecmp(mime.string(), "video/", 6)) {
+                videoTrackFound = true;
             }
         }
-        bCheckExtendedExtractor = videoOnly || amrwbAudio;
+
+        if(amrwbAudio) {
+            bCheckExtendedExtractor = true;
+        }else if (numOfTrack  == 0) {
+            bCheckExtendedExtractor = true;
+        } else if(numOfTrack == 1) {
+            if((videoTrackFound) ||
+                (!videoTrackFound && !audioTrackFound)){
+                    bCheckExtendedExtractor = true;
+            }
+        } else if (numOfTrack >= 2){
+            if(videoTrackFound && audioTrackFound) {
+                if(amrwbAudio) {
+                    bCheckExtendedExtractor = true;
+                }
+            } else {
+                bCheckExtendedExtractor = true;
+            }
+        }
     } else {
         bCheckExtendedExtractor = true;
     }
@@ -336,7 +365,9 @@ sp<MediaExtractor> QCUtilityClass::helper_MediaExtractor_CreateIfNeeded(sp<Media
         sp<MetaData> meta = retextParser->getTrackMetaData(i);
         const char *mime;
         bool success = meta->findCString(kKeyMIMEType, &mime);
-        if ((success == true) && !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AMR_WB_PLUS)) {
+        if ((success == true) &&
+            (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AMR_WB_PLUS) ||
+             !strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_HEVC) )) {
             ALOGD("Discarding default extractor and using the extended one");
             bUseDefaultExtractor = false;
             break;
@@ -351,6 +382,58 @@ sp<MediaExtractor> QCUtilityClass::helper_MediaExtractor_CreateIfNeeded(sp<Media
         defaultExt.clear();
         return retextParser;
     }
+}
+
+/*
+
+QCOM HW AAC encoder allowed bitrates
+------------------------------------------------------------------------------------------------------------------
+Bitrate limit |AAC-LC(Mono)           |AAC-LC(Stereo)        | AAC+(Mono)           | AAC+(Stereo)          |  eAAC+                |
+Minimum       |Min(24000,0.5 * f_s)   |Min(24000,f_s)        | 24000                | 24000                 |  24000                |
+Maximum       |Min(192000,6 * f_s)    |Min(192000,12 * f_s)  | Min(192000,6 * f_s)  | Min(192000,12 * f_s)  |  Min(192000,12 * f_s) |
+------------------------------------------------------------------------------------------------------------------
+*/
+bool QCUtilityClass::UseQCHWAACEncoder(audio_encoder Encoder,int32_t Channel,int32_t BitRate, int32_t SampleRate)
+{
+    bool ret = false;
+    int minBiteRate = -1;
+    int maxBiteRate = -1;
+    char propValue[PROPERTY_VALUE_MAX] = {0};
+
+    property_get("qcom.hw.aac.encoder",propValue,NULL);
+    if (!strncmp(propValue,"true",sizeof("true"))) {
+        //check for QCOM's HW AAC encoder only when qcom.aac.encoder =  true;
+        ALOGV("qcom.aac.encoder enabled, check AAC encoder(%d) allowed bitrates",Encoder);
+        switch (Encoder) {
+        case AUDIO_ENCODER_AAC:// for AAC-LC format
+            if (Channel == 1) {//mono
+                minBiteRate = MIN_BITERATE_AAC<(SampleRate/2)?MIN_BITERATE_AAC:(SampleRate/2);
+                maxBiteRate = MAX_BITERATE_AAC<(SampleRate*6)?MAX_BITERATE_AAC:(SampleRate*6);
+            } else if (Channel == 2) {//stereo
+                minBiteRate = MIN_BITERATE_AAC<SampleRate?MIN_BITERATE_AAC:SampleRate;
+                maxBiteRate = MAX_BITERATE_AAC<(SampleRate*12)?MAX_BITERATE_AAC:(SampleRate*12);
+            }
+            break;
+        case AUDIO_ENCODER_HE_AAC:// for AAC+ format
+            if (Channel == 1) {//mono
+                minBiteRate = MIN_BITERATE_AAC;
+                maxBiteRate = MAX_BITERATE_AAC<(SampleRate*6)?MAX_BITERATE_AAC:(SampleRate*6);
+            } else if (Channel == 2) {//stereo
+                minBiteRate = MIN_BITERATE_AAC;
+                maxBiteRate = MAX_BITERATE_AAC<(SampleRate*12)?MAX_BITERATE_AAC:(SampleRate*12);
+            }
+            break;
+        default:
+            ALOGV("encoder:%d not supported by QCOM HW AAC encoder",Encoder);
+        }
+        //return true only when
+        //1. minBiteRate and maxBiteRate are updated(not -1)
+       //2. minBiteRate <= SampleRate <= maxBiteRate
+        if (SampleRate >= minBiteRate && SampleRate <= maxBiteRate) {
+            ret = true;
+        }
+    }
+    return ret;
 }
 
 }

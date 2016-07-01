@@ -63,12 +63,7 @@ status_t AudioRecord::getMinFrameCount(
     // We double the size of input buffer for ping pong use of record buffer.
     size <<= 1;
 
-#ifdef QCOM_ENHANCED_AUDIO
-    if (audio_is_linear_pcm(format) || format == AUDIO_FORMAT_AMR_WB)
-#else
-    if (audio_is_linear_pcm(format))
-#endif
-    {
+    if (audio_is_linear_pcm(format) || format == AUDIO_FORMAT_AMR_WB) {
         int channelCount = popcount(channelMask);
         size /= channelCount * audio_bytes_per_sample(format);
     }
@@ -136,7 +131,6 @@ status_t AudioRecord::set(
     ALOGV("set(): sampleRate %d, channelMask %#x, frameCount %d",sampleRate, channelMask, frameCount);
 
     AutoMutex lock(mLock);
-    status_t status;
 
     if (mAudioRecord != 0) {
         return INVALID_OPERATION;
@@ -163,11 +157,7 @@ status_t AudioRecord::set(
         return BAD_VALUE;
     }
 
-#ifdef QCOM_HARDWARE
     int channelCount = popcount((channelMask) & (AUDIO_CHANNEL_IN_STEREO | AUDIO_CHANNEL_IN_MONO | AUDIO_CHANNEL_IN_5POINT1));
-#else
-    int channelCount = popcount(channelMask);
-#endif
 
     if (sessionId == 0 ) {
         mSessionId = AudioSystem::newAudioSessionId();
@@ -186,7 +176,6 @@ status_t AudioRecord::set(
         return BAD_VALUE;
     }
 
-#ifdef QCOM_HARDWARE
     size_t inputBuffSizeInBytes = -1;
     if (AudioSystem::getInputBufferSize(sampleRate, format, channelCount, &inputBuffSizeInBytes)
             != NO_ERROR) {
@@ -212,13 +201,13 @@ status_t AudioRecord::set(
         }
     } else {
         if (format ==AUDIO_FORMAT_AMR_NB) {
-             frameSizeInBytes = channelCount * 32; // Full rate framesize
+             frameSizeInBytes = channelCount * AMR_FRAMESIZE; // Full rate framesize
         } else if (format ==AUDIO_FORMAT_EVRC) {
-             frameSizeInBytes = channelCount * 23; // Full rate framesize
+             frameSizeInBytes = channelCount * EVRC_FRAMESIZE; // Full rate framesize
         } else if (format ==AUDIO_FORMAT_QCELP) {
-             frameSizeInBytes = channelCount * 35; // Full rate framesize
+             frameSizeInBytes = channelCount * QCELP_FRAMESIZE; // Full rate framesize
         } else if (format ==AUDIO_FORMAT_AAC) {
-             frameSizeInBytes = 2048;
+             frameSizeInBytes = AAC_FRAMESIZE;
         } else if ((format ==AUDIO_FORMAT_PCM_16_BIT) || (format ==AUDIO_FORMAT_PCM_8_BIT)) {
              if (audio_is_linear_pcm(format)) {
                   frameSizeInBytes = channelCount * (format == AUDIO_FORMAT_PCM_16_BIT ? sizeof(int16_t) : sizeof(int8_t));
@@ -226,21 +215,12 @@ status_t AudioRecord::set(
                   frameSizeInBytes = sizeof(int8_t);
              }
         } else if(format == AUDIO_FORMAT_AMR_WB) {
-            frameSizeInBytes = channelCount * 61;
+            frameSizeInBytes = channelCount * AMR_WB_FRAMESIZE;
 
         }
     }
     // We use 2* size of input buffer for ping pong use of record buffer.
     int minFrameCount = 2 * inputBuffSizeInBytes / frameSizeInBytes;
-#else
-    // validate framecount
-    int minFrameCount = 0;
-    status = getMinFrameCount(&minFrameCount, sampleRate, format, channelMask);
-    if (status != NO_ERROR) {
-        return status;
-    }
-#endif
-
     ALOGV("AudioRecord::set() minFrameCount = %d", minFrameCount);
 
     if (frameCount == 0) {
@@ -253,12 +233,10 @@ status_t AudioRecord::set(
         notificationFrames = frameCount/2;
     }
 
-#ifdef QCOM_HARDWARE
     //update mInputSource before openRecord_l
     mInputSource = inputSource;
-#endif
     // create the IAudioRecord
-    status = openRecord_l(sampleRate, format, channelMask,
+    status_t status = openRecord_l(sampleRate, format, channelMask,
                         frameCount, input);
     if (status != NO_ERROR) {
         return status;
@@ -287,9 +265,6 @@ status_t AudioRecord::set(
     mMarkerReached = false;
     mNewPosition = 0;
     mUpdatePeriod = 0;
-#ifndef QCOM_HARDWARE
-    mInputSource = inputSource;
-#endif
     mInput = input;
     AudioSystem::acquireAudioSessionId(mSessionId);
 
@@ -325,7 +300,6 @@ uint32_t AudioRecord::frameCount() const
 
 size_t AudioRecord::frameSize() const
 {
-#ifdef QCOM_HARDWARE
     if(inputSource() == AUDIO_SOURCE_VOICE_COMMUNICATION) {
         if (audio_is_linear_pcm(mFormat)) {
              return channelCount()*audio_bytes_per_sample(mFormat);
@@ -334,27 +308,24 @@ size_t AudioRecord::frameSize() const
         }
     } else {
         if (format() ==AUDIO_FORMAT_AMR_NB) {
-             return channelCount() * 32; // Full rate framesize
+             return channelCount() * AMR_FRAMESIZE; // Full rate framesize
         } else if (format() == AUDIO_FORMAT_EVRC) {
-             return channelCount() * 23; // Full rate framesize
+             return channelCount() * EVRC_FRAMESIZE; // Full rate framesize
         } else if (format() == AUDIO_FORMAT_QCELP) {
-             return channelCount() * 35; // Full rate framesize
+             return channelCount() * QCELP_FRAMESIZE; // Full rate framesize
         } else if (format() == AUDIO_FORMAT_AAC) {
             // Not actual framsize but for variable frame rate AAC encoding,
            // buffer size is treated as a frame size
-             return 2048;
+             return AAC_FRAMESIZE;
         } else if(format() == AUDIO_FORMAT_AMR_WB) {
-            return channelCount() * 61;
+            return channelCount() * AMR_WB_FRAMESIZE;
         }
-#endif
         if (audio_is_linear_pcm(mFormat)) {
             return channelCount()*audio_bytes_per_sample(mFormat);
         } else {
             return sizeof(uint8_t);
         }
-#ifdef QCOM_HARDWARE
     }
-#endif
 }
 
 audio_source_t AudioRecord::inputSource() const

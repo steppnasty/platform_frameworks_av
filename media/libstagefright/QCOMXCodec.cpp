@@ -30,7 +30,6 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "QCOMXCodec"
 #include <utils/Log.h>
-#include <cutils/properties.h>
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/MediaDefs.h>
@@ -450,6 +449,8 @@ status_t QCOMXCodec::setQCVideoInputFormat(const char *mime, OMX_VIDEO_CODINGTYP
         *compressionFormat = OMX_VIDEO_CodingWMV;
     } else if (!strcasecmp(MEDIA_MIMETYPE_CONTAINER_MPEG2, mime)){
         *compressionFormat = OMX_VIDEO_CodingMPEG2;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_HEVC, mime)){
+        *compressionFormat = (OMX_VIDEO_CODINGTYPE)QOMX_VIDEO_CodingHevc;
     } else {
         retVal = BAD_VALUE;
     }
@@ -467,6 +468,8 @@ status_t QCOMXCodec::setQCVideoOutputFormat(const char *mime, OMX_VIDEO_CODINGTY
         *compressionFormat = (OMX_VIDEO_CODINGTYPE)QOMX_VIDEO_CodingDivx;
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV, mime)){
         *compressionFormat = OMX_VIDEO_CodingWMV;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_HEVC, mime)){
+        *compressionFormat = (OMX_VIDEO_CODINGTYPE)QOMX_VIDEO_CodingHevc;
     } else {
         retVal = BAD_VALUE;
     }
@@ -552,6 +555,8 @@ void QCOMXCodec::setQCSpecificVideoFormat(const sp<MetaData> &meta, sp<IOMX> OMX
     int32_t arbitraryMode = 1;
     bool success = meta->findInt32(kKeyUseArbitraryMode, &arbitraryMode);
     bool useArbitraryMode = true;
+    char qcComponentName[] = "OMX.qcom.video.decoder.";
+
     if (success) {
         useArbitraryMode = arbitraryMode ? true : false;
     }
@@ -571,11 +576,7 @@ void QCOMXCodec::setQCSpecificVideoFormat(const sp<MetaData> &meta, sp<IOMX> OMX
         }
     }
 
-    // Enable timestamp reordering only for AVI/mpeg4 and vc1 clips
-    const char *fileFormat;
-    success = meta->findCString(kKeyFileFormat, &fileFormat);
-    if (!strcmp(componentName, "OMX.qcom.video.decoder.vc1") ||
-        (success && !strncmp(fileFormat, "video/avi", 9))) {
+    if (!strncmp(componentName, qcComponentName, sizeof(qcComponentName) - 1)) {
         ALOGI("Enabling timestamp reordering");
         QOMX_INDEXTIMESTAMPREORDER reorder;
         InitOMXParams(&reorder);
@@ -591,7 +592,22 @@ void QCOMXCodec::setQCSpecificVideoFormat(const sp<MetaData> &meta, sp<IOMX> OMX
     }
 }
 
-void QCOMXCodec::checkIfInterlaced(const uint8_t *ptr, const sp<MetaData> &meta)
+status_t QCOMXCodec::enableSmoothStreaming(
+        const sp<IOMX> &omx, IOMX::node_id nodeID)
+{
+    status_t err = omx->setParameter(
+            nodeID,
+            (OMX_INDEXTYPE)OMX_QcomIndexParamEnableSmoothStreaming,
+            &err, sizeof(status_t));
+    if (err != OK) {
+        ALOGE("Failed to enable Smoothstreaming");
+        return err;
+    }
+    ALOGI("Smoothstreaming Enabled");
+    return OK;
+}
+
+bool QCOMXCodec::checkIfInterlaced(const uint8_t *ptr, const sp<MetaData> &meta)
 {
     uint16_t spsSize = (((uint16_t)ptr[6]) << 8) + (uint16_t)(ptr[7]);
     int32_t width = 0, height = 0, isInterlaced = 1;
@@ -605,17 +621,7 @@ void QCOMXCodec::checkIfInterlaced(const uint8_t *ptr, const sp<MetaData> &meta)
     if (isInterlaced) {
         meta->setInt32(kKeyUseArbitraryMode, 1);
     }
-    return;
-}
-
-bool QCOMXCodec::useHWAACDecoder(const char *mime) {
-    char value[PROPERTY_VALUE_MAX];
-    int aaccodectype = property_get("media.aaccodectype", value, NULL);
-    if (!strcmp("0", value) && aaccodectype && !strcmp(mime, MEDIA_MIMETYPE_AUDIO_AAC)) {
-        ALOGI("Using Hardware AAC Decoder");
-        return true;
-    }
-    return false;
+    return (isInterlaced == 1);
 }
 
 }

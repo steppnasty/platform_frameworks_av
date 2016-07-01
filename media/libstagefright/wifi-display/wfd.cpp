@@ -91,11 +91,19 @@ void RemoteDisplayClient::onDisplayConnected(
           width, height, flags);
 
     mSurfaceTexture = surfaceTexture;
+    mDisplayBinder = mComposerClient->createDisplay(
+            String8("foo"), false /* secure */);
 
     SurfaceComposerClient::openGlobalTransaction();
+    mComposerClient->setDisplaySurface(mDisplayBinder, mSurfaceTexture);
 
     Rect layerStackRect(1280, 720);  // XXX fix this.
     Rect displayRect(1280, 720);
+
+    mComposerClient->setDisplayProjection(
+            mDisplayBinder, 0 /* 0 degree rotation */,
+            layerStackRect,
+            displayRect);
 
     SurfaceComposerClient::closeGlobalTransaction();
 }

@@ -32,10 +32,7 @@
 #include <cutils/sched_policy.h>
 #include <utils/threads.h>
 
-#ifdef QCOM_HARDWARE
 #include <media/IDirectTrackClient.h>
-#endif
-
 namespace android {
 
 // ----------------------------------------------------------------------------
@@ -44,10 +41,7 @@ class audio_track_cblk_t;
 
 // ----------------------------------------------------------------------------
 
-class AudioTrack :
-#ifdef QCOM_HARDWARE
-                   public BnDirectTrackClient,
-#endif
+class AudioTrack : public BnDirectTrackClient,
                    virtual public RefBase
 {
 public:
@@ -461,10 +455,8 @@ public:
      */
             status_t dump(int fd, const Vector<String16>& args) const;
 
-#ifdef QCOM_HARDWARE
             virtual void notify(int msg);
             virtual status_t getTimeStamp(uint64_t *tstamp);
-#endif
 
 protected:
     /* copying audio tracks is not allowed */
@@ -511,9 +503,7 @@ protected:
             status_t restoreTrack_l(audio_track_cblk_t*& cblk, bool fromStart);
             bool stopped_l() const { return !mActive; }
 
-#ifdef QCOM_HARDWARE
     sp<IDirectTrack>        mDirectTrack;
-#endif
     sp<IAudioTrack>         mAudioTrack;
     sp<IMemory>             mCblkMemory;
     sp<AudioTrackThread>    mAudioTrackThread;
@@ -547,20 +537,18 @@ protected:
     uint32_t                mUpdatePeriod;
     bool                    mFlushed; // FIXME will be made obsolete by making flush() synchronous
     audio_output_flags_t    mFlags;
-#ifdef QCOM_HARDWARE
     sp<IAudioFlinger>       mAudioFlinger;
     audio_io_handle_t       mAudioDirectOutput;
-#endif
     int                     mSessionId;
     int                     mAuxEffectId;
     mutable Mutex           mLock;
     status_t                mRestoreStatus;
-#ifdef QCOM_HARDWARE
     void*                   mObserver;
-#endif
     bool                    mIsTimed;
     int                     mPreviousPriority;          // before start()
     SchedPolicy             mPreviousSchedulingGroup;
+    audio_io_handle_t       mOutput;
+    uint32_t                mSampleRate;
 };
 
 class TimedAudioTrack : public AudioTrack

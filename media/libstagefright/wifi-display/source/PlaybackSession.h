@@ -56,6 +56,7 @@ struct WifiDisplaySource::PlaybackSession : public AHandler {
     status_t finishPlay();
     status_t pause();
 
+    sp<ISurfaceTexture> getSurfaceTexture();
     int32_t width() const;
     int32_t height() const;
 

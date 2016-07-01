@@ -135,13 +135,9 @@ private:
         sp<MetaData> *meta);
     status_t startMPEG4Recording();
     status_t startAMRRecording();
-#ifdef QCOM_FM_ENABLED
     status_t startFMA2DPWriter();
-#endif
     status_t startAACRecording();
-#ifdef QCOM_HARDWARE
     status_t startWAVERecording();
-#endif
     status_t startRawAudioRecording();
     status_t startRTPRecording();
     status_t startMPEG2TSRecording();
@@ -198,10 +194,8 @@ private:
     StagefrightRecorder(const StagefrightRecorder &);
     StagefrightRecorder &operator=(const StagefrightRecorder &);
 
-#ifdef QCOM_HARDWARE
     /* extension */
     status_t startExtendedRecording();
-#endif
 };
 
 }  // namespace android

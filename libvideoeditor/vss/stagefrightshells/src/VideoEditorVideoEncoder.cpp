@@ -29,12 +29,14 @@
 #include "M4SYS_AccessUnit.h"
 #include "VideoEditorVideoEncoder.h"
 #include "VideoEditorUtils.h"
+#include "MediaBufferPuller.h"
 #include <I420ColorConverter.h>
 
+#include <unistd.h>
 #include "utils/Log.h"
 #include "utils/Vector.h"
+#include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/MediaSource.h>
-#include <media/stagefright/MediaDebug.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/OMXClient.h>
@@ -56,18 +58,6 @@
 /********************
  *   SOURCE CLASS   *
  ********************/
-static const int32_t H264_Bitrate[][3] =
-{
-    {48000,72000,96000}, // SQCIF
-    {96000,128000,192000}, // QQVGA, QCIF
-    {256000,384000,512000}, // QVGA
-    {320000,512000,720000}, // CIF
-    {512000,960000,1536000}, // VGA
-    {768000,1280000,2048000}, // NTSC , WVGA
-    {832000,1392000,2224000}, // FWVGA
-    {5232000,8768000,14000000}, // 720P
-    {7552000,11520000,20000000}, // 1080P
-};
 
 namespace android {
 
@@ -129,7 +119,7 @@ VideoEditorVideoEncoderSource::VideoEditorVideoEncoderSource(
         mIsEOS(false),
         mState(CREATED),
         mEncFormat(format) {
-    LOGV("VideoEditorVideoEncoderSource::VideoEditorVideoEncoderSource");
+    ALOGV("VideoEditorVideoEncoderSource::VideoEditorVideoEncoderSource");
 }
 
 VideoEditorVideoEncoderSource::~VideoEditorVideoEncoderSource() {
@@ -143,25 +133,25 @@ VideoEditorVideoEncoderSource::~VideoEditorVideoEncoderSource() {
 status_t VideoEditorVideoEncoderSource::start(MetaData *meta) {
     status_t err = OK;
 
-    LOGV("VideoEditorVideoEncoderSource::start() begin");
+    ALOGV("VideoEditorVideoEncoderSource::start() begin");
 
     if( CREATED != mState ) {
-        LOGV("VideoEditorVideoEncoderSource::start: invalid state %d", mState);
+        ALOGV("VideoEditorVideoEncoderSource::start: invalid state %d", mState);
         return UNKNOWN_ERROR;
     }
     mState = STARTED;
 
-    LOGV("VideoEditorVideoEncoderSource::start() END (0x%x)", err);
+    ALOGV("VideoEditorVideoEncoderSource::start() END (0x%x)", err);
     return err;
 }
 
 status_t VideoEditorVideoEncoderSource::stop() {
     status_t err = OK;
 
-    LOGV("VideoEditorVideoEncoderSource::stop() begin");
+    ALOGV("VideoEditorVideoEncoderSource::stop() begin");
 
     if( STARTED != mState ) {
-        LOGV("VideoEditorVideoEncoderSource::stop: invalid state %d", mState);
+        ALOGV("VideoEditorVideoEncoderSource::stop: invalid state %d", mState);
         return UNKNOWN_ERROR;
     }
 
@@ -174,19 +164,19 @@ status_t VideoEditorVideoEncoderSource::stop() {
         mFirstBufferLink = mFirstBufferLink->nextLink;
         delete tmpLink;
     }
-    LOGV("VideoEditorVideoEncoderSource::stop : %d buffer remained", i);
+    ALOGV("VideoEditorVideoEncoderSource::stop : %d buffer remained", i);
     mFirstBufferLink = NULL;
     mLastBufferLink = NULL;
 
     mState = CREATED;
 
-    LOGV("VideoEditorVideoEncoderSource::stop() END (0x%x)", err);
+    ALOGV("VideoEditorVideoEncoderSource::stop() END (0x%x)", err);
     return err;
 }
 
 sp<MetaData> VideoEditorVideoEncoderSource::getFormat() {
 
-    LOGV("VideoEditorVideoEncoderSource::getFormat");
+    ALOGV("VideoEditorVideoEncoderSource::getFormat");
     return mEncFormat;
 }
 
@@ -197,10 +187,10 @@ status_t VideoEditorVideoEncoderSource::read(MediaBuffer **buffer,
     status_t err = OK;
     MediaBufferChain* tmpLink = NULL;
 
-    LOGV("VideoEditorVideoEncoderSource::read() begin");
+    ALOGV("VideoEditorVideoEncoderSource::read() begin");
 
     if ( STARTED != mState ) {
-        LOGV("VideoEditorVideoEncoderSource::read: invalid state %d", mState);
+        ALOGV("VideoEditorVideoEncoderSource::read: invalid state %d", mState);
         return UNKNOWN_ERROR;
     }
 
@@ -211,7 +201,7 @@ status_t VideoEditorVideoEncoderSource::read(MediaBuffer **buffer,
     // End of stream?
     if (mFirstBufferLink == NULL) {
         *buffer = NULL;
-        LOGV("VideoEditorVideoEncoderSource::read : EOS");
+        ALOGV("VideoEditorVideoEncoderSource::read : EOS");
         return ERROR_END_OF_STREAM;
     }
 
@@ -226,7 +216,7 @@ status_t VideoEditorVideoEncoderSource::read(MediaBuffer **buffer,
     delete tmpLink;
     mNbBuffer--;
 
-    LOGV("VideoEditorVideoEncoderSource::read() END (0x%x)", err);
+    ALOGV("VideoEditorVideoEncoderSource::read() END (0x%x)", err);
     return err;
 }
 
@@ -234,10 +224,10 @@ int32_t VideoEditorVideoEncoderSource::storeBuffer(MediaBuffer *buffer) {
     Mutex::Autolock autolock(mLock);
     status_t err = OK;
 
-    LOGV("VideoEditorVideoEncoderSource::storeBuffer() begin");
+    ALOGV("VideoEditorVideoEncoderSource::storeBuffer() begin");
 
     if( NULL == buffer ) {
-        LOGV("VideoEditorVideoEncoderSource::storeBuffer : reached EOS");
+        ALOGV("VideoEditorVideoEncoderSource::storeBuffer : reached EOS");
         mIsEOS = true;
     } else {
         MediaBufferChain* newLink = new MediaBufferChain;
@@ -252,201 +242,13 @@ int32_t VideoEditorVideoEncoderSource::storeBuffer(MediaBuffer *buffer) {
         mNbBuffer++;
     }
     mBufferCond.signal();
-    LOGV("VideoEditorVideoEncoderSource::storeBuffer() end");
+    ALOGV("VideoEditorVideoEncoderSource::storeBuffer() end");
     return mNbBuffer;
 }
 
 int32_t VideoEditorVideoEncoderSource::getNumberOfBuffersInQueue() {
     Mutex::Autolock autolock(mLock);
     return mNbBuffer;
-}
-/********************
- *      PULLER      *
- ********************/
-
-// Pulls media buffers from a MediaSource repeatedly.
-// The user can then get the buffers from that list.
-class VideoEditorVideoEncoderPuller {
-public:
-    VideoEditorVideoEncoderPuller(sp<MediaSource> source);
-    ~VideoEditorVideoEncoderPuller();
-    void start();
-    void stop();
-    MediaBuffer* getBufferBlocking();
-    MediaBuffer* getBufferNonBlocking();
-    void putBuffer(MediaBuffer* buffer);
-    bool hasMediaSourceReturnedError();
-private:
-    static int acquireThreadStart(void* arg);
-    void acquireThreadFunc();
-
-    static int releaseThreadStart(void* arg);
-    void releaseThreadFunc();
-
-    sp<MediaSource> mSource;
-    Vector<MediaBuffer*> mBuffers;
-    Vector<MediaBuffer*> mReleaseBuffers;
-
-    Mutex mLock;
-    Condition mUserCond;     // for the user of this class
-    Condition mAcquireCond;  // for the acquire thread
-    Condition mReleaseCond;  // for the release thread
-
-    bool mAskToStart;      // Asks the threads to start
-    bool mAskToStop;       // Asks the threads to stop
-    bool mAcquireStopped;  // The acquire thread has stopped
-    bool mReleaseStopped;  // The release thread has stopped
-    status_t mSourceError; // Error returned by MediaSource read
-};
-
-VideoEditorVideoEncoderPuller::VideoEditorVideoEncoderPuller(
-    sp<MediaSource> source) {
-    mSource = source;
-    mAskToStart = false;
-    mAskToStop = false;
-    mAcquireStopped = false;
-    mReleaseStopped = false;
-    mSourceError = OK;
-    androidCreateThread(acquireThreadStart, this);
-    androidCreateThread(releaseThreadStart, this);
-}
-
-VideoEditorVideoEncoderPuller::~VideoEditorVideoEncoderPuller() {
-    stop();
-}
-
-bool VideoEditorVideoEncoderPuller::hasMediaSourceReturnedError() {
-    Mutex::Autolock autolock(mLock);
-    return ((mSourceError != OK) ? true : false);
-}
-void VideoEditorVideoEncoderPuller::start() {
-    Mutex::Autolock autolock(mLock);
-    mAskToStart = true;
-    mAcquireCond.signal();
-    mReleaseCond.signal();
-}
-
-void VideoEditorVideoEncoderPuller::stop() {
-    Mutex::Autolock autolock(mLock);
-    mAskToStop = true;
-    mAcquireCond.signal();
-    mReleaseCond.signal();
-    while (!mAcquireStopped || !mReleaseStopped) {
-        mUserCond.wait(mLock);
-    }
-
-    // Release remaining buffers
-    for (size_t i = 0; i < mBuffers.size(); i++) {
-        mBuffers.itemAt(i)->release();
-    }
-
-    for (size_t i = 0; i < mReleaseBuffers.size(); i++) {
-        mReleaseBuffers.itemAt(i)->release();
-    }
-
-    mBuffers.clear();
-    mReleaseBuffers.clear();
-}
-
-MediaBuffer* VideoEditorVideoEncoderPuller::getBufferNonBlocking() {
-    Mutex::Autolock autolock(mLock);
-    if (mBuffers.empty()) {
-        return NULL;
-    } else {
-        MediaBuffer* b = mBuffers.itemAt(0);
-        mBuffers.removeAt(0);
-        return b;
-    }
-}
-
-MediaBuffer* VideoEditorVideoEncoderPuller::getBufferBlocking() {
-    Mutex::Autolock autolock(mLock);
-    while (mBuffers.empty() && !mAcquireStopped) {
-        mUserCond.wait(mLock);
-    }
-
-    if (mBuffers.empty()) {
-        return NULL;
-    } else {
-        MediaBuffer* b = mBuffers.itemAt(0);
-        mBuffers.removeAt(0);
-        return b;
-    }
-}
-
-void VideoEditorVideoEncoderPuller::putBuffer(MediaBuffer* buffer) {
-    Mutex::Autolock autolock(mLock);
-    mReleaseBuffers.push(buffer);
-    mReleaseCond.signal();
-}
-
-int VideoEditorVideoEncoderPuller::acquireThreadStart(void* arg) {
-    VideoEditorVideoEncoderPuller* self = (VideoEditorVideoEncoderPuller*)arg;
-    self->acquireThreadFunc();
-    return 0;
-}
-
-int VideoEditorVideoEncoderPuller::releaseThreadStart(void* arg) {
-    VideoEditorVideoEncoderPuller* self = (VideoEditorVideoEncoderPuller*)arg;
-    self->releaseThreadFunc();
-    return 0;
-}
-
-void VideoEditorVideoEncoderPuller::acquireThreadFunc() {
-    mLock.lock();
-
-    // Wait for the start signal
-    while (!mAskToStart && !mAskToStop) {
-        mAcquireCond.wait(mLock);
-    }
-
-    // Loop until we are asked to stop, or there is nothing more to read
-    while (!mAskToStop) {
-        MediaBuffer* pBuffer;
-        mLock.unlock();
-        status_t result = mSource->read(&pBuffer, NULL);
-        mLock.lock();
-        mSourceError = result;
-        if (result != OK) {
-            break;
-        }
-        mBuffers.push(pBuffer);
-        mUserCond.signal();
-    }
-
-    mAcquireStopped = true;
-    mUserCond.signal();
-    mLock.unlock();
-}
-
-void VideoEditorVideoEncoderPuller::releaseThreadFunc() {
-    mLock.lock();
-
-    // Wait for the start signal
-    while (!mAskToStart && !mAskToStop) {
-        mReleaseCond.wait(mLock);
-    }
-
-    // Loop until we are asked to stop
-    while (1) {
-        if (mReleaseBuffers.empty()) {
-            if (mAskToStop) {
-                break;
-            } else {
-                mReleaseCond.wait(mLock);
-                continue;
-            }
-        }
-        MediaBuffer* pBuffer = mReleaseBuffers.itemAt(0);
-        mReleaseBuffers.removeAt(0);
-        mLock.unlock();
-        pBuffer->release();
-        mLock.lock();
-    }
-
-    mReleaseStopped = true;
-    mUserCond.signal();
-    mLock.unlock();
 }
 
 /**
@@ -480,7 +282,7 @@ typedef struct {
     OMXClient                         mClient;
     sp<MediaSource>                   mEncoder;
     OMX_COLOR_FORMATTYPE              mEncoderColorFormat;
-    VideoEditorVideoEncoderPuller*    mPuller;
+    MediaBufferPuller*                mPuller;
     I420ColorConverter*               mI420ColorConverter;
 
     uint32_t                          mNbInputFrames;
@@ -516,7 +318,7 @@ M4OSA_ERR VideoEditorVideoEncoder_getDSI(M4ENCODER_Context pContext,
     sp<MediaSource> encoder = NULL;;
     OMXClient client;
 
-    LOGV("VideoEditorVideoEncoder_getDSI begin");
+    ALOGV("VideoEditorVideoEncoder_getDSI begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext,       M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != metaData.get(), M4ERR_PARAMETER);
@@ -591,11 +393,11 @@ cleanUp:
     client.disconnect();
     if ( encoderSource != NULL ) { encoderSource.clear(); }
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_getDSI no error");
+        ALOGV("VideoEditorVideoEncoder_getDSI no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_getDSI ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_getDSI ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_getDSI end");
+    ALOGV("VideoEditorVideoEncoder_getDSI end");
     return err;
 }
 /********************
@@ -606,7 +408,7 @@ M4OSA_ERR VideoEditorVideoEncoder_cleanup(M4ENCODER_Context pContext) {
     M4OSA_ERR err = M4NO_ERROR;
     VideoEditorVideoEncoder_Context* pEncoderContext = M4OSA_NULL;
 
-    LOGV("VideoEditorVideoEncoder_cleanup begin");
+    ALOGV("VideoEditorVideoEncoder_cleanup begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
 
@@ -620,11 +422,11 @@ M4OSA_ERR VideoEditorVideoEncoder_cleanup(M4ENCODER_Context pContext) {
 
 cleanUp:
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_cleanup no error");
+        ALOGV("VideoEditorVideoEncoder_cleanup no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_cleanup ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_cleanup ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_cleanup end");
+    ALOGV("VideoEditorVideoEncoder_cleanup end");
     return err;
 }
 
@@ -638,7 +440,7 @@ M4OSA_ERR VideoEditorVideoEncoder_init(M4ENCODER_Format format,
     VideoEditorVideoEncoder_Context* pEncoderContext = M4OSA_NULL;
     int encoderInput = OMX_COLOR_FormatYUV420Planar;
 
-    LOGV("VideoEditorVideoEncoder_init begin: format  %d", format);
+    ALOGV("VideoEditorVideoEncoder_init begin: format  %d", format);
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != pWriterDataInterface, M4ERR_PARAMETER);
@@ -665,20 +467,19 @@ M4OSA_ERR VideoEditorVideoEncoder_init(M4ENCODER_Format format,
         pEncoderContext->mI420ColorConverter = NULL;
     }
     pEncoderContext->mEncoderColorFormat = (OMX_COLOR_FORMATTYPE)encoderInput;
-    LOGV("encoder input format = 0x%X\n", encoderInput);
+    ALOGI("encoder input format = 0x%X\n", encoderInput);
 
     *pContext = pEncoderContext;
 
 cleanUp:
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_init no error");
+        ALOGV("VideoEditorVideoEncoder_init no error");
     } else {
         VideoEditorVideoEncoder_cleanup(pEncoderContext);
         *pContext = M4OSA_NULL;
-        LOGV("VideoEditorVideoEncoder_init ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_init ERROR 0x%X", err);
     }
-
-    LOGV("VideoEditorVideoEncoder_init end");
+    ALOGV("VideoEditorVideoEncoder_init end");
     return err;
 }
 
@@ -715,7 +516,7 @@ M4OSA_ERR VideoEditorVideoEncoder_close(M4ENCODER_Context pContext) {
     M4OSA_ERR err = M4NO_ERROR;
     VideoEditorVideoEncoder_Context* pEncoderContext = M4OSA_NULL;
 
-    LOGV("VideoEditorVideoEncoder_close begin");
+    ALOGV("VideoEditorVideoEncoder_close begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
 
@@ -733,120 +534,22 @@ M4OSA_ERR VideoEditorVideoEncoder_close(M4ENCODER_Context pContext) {
     delete pEncoderContext->mPuller;
     pEncoderContext->mPuller = NULL;
 
-    if (pEncoderContext->mI420ColorConverter) {
-        delete pEncoderContext->mI420ColorConverter;
-        pEncoderContext->mI420ColorConverter = NULL;
-    }
+    delete pEncoderContext->mI420ColorConverter;
+    pEncoderContext->mI420ColorConverter = NULL;
 
     // Set the new state
     pEncoderContext->mState = CREATED;
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_close no error");
+        ALOGV("VideoEditorVideoEncoder_close no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_close ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_close ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_close end");
+    ALOGV("VideoEditorVideoEncoder_close end");
     return err;
 }
 
-void VideoEditorVideoEncoder_reconfigureBitrate(VideoEditorVideoEncoder_Context* pEncoderContext) {
-
-    //TODO : Span it out for all framerates
-    int encode_quality_index = 0;
-    int encode_resolution_index = 0;
-    LOGV("Bitrate before reconfig is %d\n",pEncoderContext->mCodecParams->Bitrate);
-    int32_t bitrate = (int32_t)pEncoderContext->mCodecParams->Bitrate;
-    switch (bitrate) {
-        case 512000:
-            encode_quality_index = 0;
-            break;
-        case 2000000:
-            encode_quality_index = 1;
-            break;
-        case 8000000:
-            encode_quality_index = 2;
-            break;
-        case 128000:    // transition values
-        case 384000:
-        case 5000000:
-            encode_quality_index = 1;
-            break;
-        default:
-            LOGW("VideoEncoder_reconfigureBitrate : copying bitrate from the input file");
-            LOGW("Bitrate is %d\n",bitrate);
-            if (bitrate > 20000000) {
-                pEncoderContext->mCodecParams->Bitrate = ((M4ENCODER_Bitrate)20000000);
-                LOGW("Limiting bitrate to max value of 20000000\n");
-            }
-            return;
-    }
-
-    switch (pEncoderContext->mCodecParams->FrameWidth) {
-        case 128://SQCIF
-            encode_resolution_index = 0;
-            break;
-        case 160://QQVGA
-            encode_resolution_index = 1;
-            break;
-        case 176://QCIF
-            encode_resolution_index = 1;
-            break;
-        case 320://QVGA
-            encode_resolution_index = 2;
-            break;
-        case 352://CIF
-            encode_resolution_index = 3;
-            break;
-        case 640://VGA
-            encode_resolution_index = 4;
-            break;
-        case 720://NTSC
-            encode_resolution_index = 5;
-            break;
-        case 800://WVGA
-            encode_resolution_index = 5;
-            break;
-        case 848://854 - FWVGA
-            encode_resolution_index = 6;
-            break;
-        case 960://720P
-            encode_resolution_index = 7;
-            break;
-        case 1024://XVGA - 720P
-            encode_resolution_index = 7;
-            break;
-        case 1088://1080 - 720P
-            encode_resolution_index = 7;
-            break;
-        case 1280://720P
-            encode_resolution_index = 7;
-            break;
-        case 1920://1080P
-            encode_resolution_index = 8;
-            break;
-        default:
-            LOGE("VideoEncoder_reconfigureBitrate : incorrect output width from app");
-            LOGE("pEncoderContext->mCodecParams->Width is %d and height is %d\n",pEncoderContext->mCodecParams->FrameWidth,pEncoderContext->mCodecParams->FrameHeight);
-            CHECK(0);
-            break;
-    }
-
-    switch (pEncoderContext->mCodecParams->Format) {
-        case M4ENCODER_kH264:
-            pEncoderContext->mCodecParams->Bitrate = (M4ENCODER_Bitrate)H264_Bitrate[encode_resolution_index][encode_quality_index];
-            break;
-        case M4ENCODER_kH263:
-        case M4ENCODER_kMPEG4:
-        default:
-            LOGE("VideoEncoder_reconfigureBitrate : incorrect output format from app");
-            CHECK(0);
-            break;
-    }
-    LOGV("Bitrate After reconfig is %d\n",pEncoderContext->mCodecParams->Bitrate);
-    return;
-}
 
 M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
         M4SYS_AccessUnit* pAU, M4OSA_Void* pParams) {
@@ -862,7 +565,7 @@ M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
     int32_t iFrameRate = 0;
     uint32_t codecFlags = 0;
 
-    LOGV(">>> VideoEditorVideoEncoder_open begin");
+    ALOGV(">>> VideoEditorVideoEncoder_open begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != pAU,      M4ERR_PARAMETER);
@@ -929,7 +632,13 @@ M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
     }
     iProfile = pEncoderContext->mCodecParams->videoProfile;
     iLevel = pEncoderContext->mCodecParams->videoLevel;
-
+    ALOGV("Encoder mime %s profile %d, level %d",
+        mime,iProfile, iLevel);
+    ALOGV("Encoder w %d, h %d, bitrate %d, fps %d",
+        pEncoderContext->mCodecParams->FrameWidth,
+        pEncoderContext->mCodecParams->FrameHeight,
+        pEncoderContext->mCodecParams->Bitrate,
+        pEncoderContext->mCodecParams->FrameRate);
     CHECK(iProfile != 0x7fffffff);
     CHECK(iLevel != 0x7fffffff);
 
@@ -962,11 +671,11 @@ M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
         case M4ENCODER_k30_FPS:   iFrameRate = 30; break;
         case M4ENCODER_kVARIABLE_FPS:
             iFrameRate = 30;
-            LOGI("Frame rate set to M4ENCODER_kVARIABLE_FPS: set to 30");
+            ALOGI("Frame rate set to M4ENCODER_kVARIABLE_FPS: set to 30");
           break;
         case M4ENCODER_kUSE_TIMESCALE:
             iFrameRate = 30;
-            LOGI("Frame rate set to M4ENCODER_kUSE_TIMESCALE:  set to 30");
+            ALOGI("Frame rate set to M4ENCODER_kUSE_TIMESCALE:  set to 30");
             break;
 
         default:
@@ -974,9 +683,6 @@ M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
                 M4ERR_STATE);
             break;
     }
-    /*reconfigure output bitrate based on resolution*/
-    VideoEditorVideoEncoder_reconfigureBitrate(pEncoderContext);
-
     encoderMetadata->setInt32(kKeyFrameRate, iFrameRate);
     encoderMetadata->setInt32(kKeyBitRate,
         (int32_t)pEncoderContext->mCodecParams->Bitrate);
@@ -984,14 +690,6 @@ M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
 
     encoderMetadata->setInt32(kKeyColorFormat,
         pEncoderContext->mEncoderColorFormat);
-
-    LOGV("Encoder mime %s profile %d, level %d",
-        mime,iProfile, iLevel);
-    LOGV("Encoder w %d, h %d, bitrate %d, fps %d",
-        pEncoderContext->mCodecParams->FrameWidth,
-        pEncoderContext->mCodecParams->FrameHeight,
-        pEncoderContext->mCodecParams->Bitrate,
-        iFrameRate);
 
     if (pEncoderContext->mCodecParams->Format != M4ENCODER_kH263) {
         // Get the encoder DSI
@@ -1017,8 +715,8 @@ M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
         pEncoderContext->mClient.interface(), encoderMetadata, true,
         pEncoderContext->mEncoderSource, NULL, codecFlags);
     VIDEOEDITOR_CHECK(NULL != pEncoderContext->mEncoder.get(), M4ERR_STATE);
-    LOGV("VideoEditorVideoEncoder_open : DONE");
-    pEncoderContext->mPuller = new VideoEditorVideoEncoderPuller(
+    ALOGV("VideoEditorVideoEncoder_open : DONE");
+    pEncoderContext->mPuller = new MediaBufferPuller(
         pEncoderContext->mEncoder);
 
     // Set the new state
@@ -1026,12 +724,12 @@ M4OSA_ERR VideoEditorVideoEncoder_open(M4ENCODER_Context pContext,
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_open no error");
+        ALOGV("VideoEditorVideoEncoder_open no error");
     } else {
         VideoEditorVideoEncoder_close(pEncoderContext);
-        LOGV("VideoEditorVideoEncoder_open ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_open ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_open end");
+    ALOGV("VideoEditorVideoEncoder_open end");
     return err;
 }
 
@@ -1044,7 +742,7 @@ M4OSA_ERR VideoEditorVideoEncoder_processInputBuffer(
     MediaBuffer* buffer = NULL;
     int32_t nbBuffer = 0;
 
-    LOGV("VideoEditorVideoEncoder_processInputBuffer begin: cts  %f", Cts);
+    ALOGV("VideoEditorVideoEncoder_processInputBuffer begin: cts  %f", Cts);
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
 
@@ -1054,7 +752,6 @@ M4OSA_ERR VideoEditorVideoEncoder_processInputBuffer(
     pOutPlane[2].pac_data = M4OSA_NULL;
 
     if ( M4OSA_FALSE == bReachedEOS ) {
-
         M4OSA_UInt32 sizeY = pEncoderContext->mCodecParams->FrameWidth *
             pEncoderContext->mCodecParams->FrameHeight;
         M4OSA_UInt32 sizeU = sizeY >> 2;
@@ -1083,7 +780,7 @@ M4OSA_ERR VideoEditorVideoEncoder_processInputBuffer(
 
         // Apply pre-processing
         err = pEncoderContext->mPreProcFunction(
-                pEncoderContext->mPreProcContext, M4OSA_NULL, pOutPlane);
+            pEncoderContext->mPreProcContext, M4OSA_NULL, pOutPlane);
         VIDEOEDITOR_CHECK(M4NO_ERROR == err, err);
 
         // Convert MediaBuffer to the encoder input format if necessary
@@ -1109,7 +806,7 @@ M4OSA_ERR VideoEditorVideoEncoder_processInputBuffer(
                     encoderWidth, encoderHeight,
                     encoderRect,
                     (uint8_t*)newBuffer->data() + newBuffer->range_offset()) < 0) {
-                    LOGE("convertI420ToEncoderInput failed");
+                    ALOGE("convertI420ToEncoderInput failed");
                 }
 
                 // switch to new buffer
@@ -1117,6 +814,7 @@ M4OSA_ERR VideoEditorVideoEncoder_processInputBuffer(
                 buffer = newBuffer;
             }
         }
+
         // Set the metadata
         buffer->meta_data()->setInt64(kKeyTime, (int64_t)(Cts*1000));
     }
@@ -1126,14 +824,14 @@ M4OSA_ERR VideoEditorVideoEncoder_processInputBuffer(
 
 cleanUp:
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_processInputBuffer error 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_processInputBuffer error 0x%X", err);
     } else {
         if( NULL != buffer ) {
             buffer->release();
         }
-        LOGV("VideoEditorVideoEncoder_processInputBuffer ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_processInputBuffer ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_processInputBuffer end");
+    ALOGV("VideoEditorVideoEncoder_processInputBuffer end");
     return err;
 }
 
@@ -1146,7 +844,7 @@ M4OSA_ERR VideoEditorVideoEncoder_processOutputBuffer(
     int64_t i64Tmp = 0;
     status_t result = OK;
 
-    LOGV("VideoEditorVideoEncoder_processOutputBuffer begin");
+    ALOGV("VideoEditorVideoEncoder_processOutputBuffer begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != buffer,   M4ERR_PARAMETER);
@@ -1156,18 +854,18 @@ M4OSA_ERR VideoEditorVideoEncoder_processOutputBuffer(
     // Process the returned AU
     if ( 0 == buffer->range_length() ) {
         // Encoder has no data yet, nothing unusual
-        LOGV("VideoEditorVideoEncoder_processOutputBuffer : buffer is empty");
+        ALOGV("VideoEditorVideoEncoder_processOutputBuffer : buffer is empty");
         goto cleanUp;
     }
     VIDEOEDITOR_CHECK(0 == ((M4OSA_UInt32)buffer->data())%4, M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(buffer->meta_data().get(), M4ERR_PARAMETER);
     if ( buffer->meta_data()->findInt32(kKeyIsCodecConfig, &i32Tmp) && i32Tmp ){
         {   // Display the DSI
-            LOGV("VideoEditorVideoEncoder_processOutputBuffer DSI %d",
+            ALOGV("VideoEditorVideoEncoder_processOutputBuffer DSI %d",
                 buffer->range_length());
             uint8_t* tmp = (uint8_t*)(buffer->data());
             for( uint32_t i=0; i<buffer->range_length(); i++ ) {
-                LOGV("DSI [%d] %.2X", i, tmp[i]);
+                ALOGV("DSI [%d] %.2X", i, tmp[i]);
             }
         }
     } else {
@@ -1182,15 +880,15 @@ M4OSA_ERR VideoEditorVideoEncoder_processOutputBuffer(
         pEncoderContext->mLastOutputCts = i64Tmp;
 
         Cts = (M4OSA_Int32)(i64Tmp/1000);
-        LOGV("[TS_CHECK] VI/ENC WRITE frame %d @ %lld -> %d (last %d)",
+        ALOGV("[TS_CHECK] VI/ENC WRITE frame %d @ %lld -> %d (last %d)",
             pEncoderContext->mNbOutputFrames, i64Tmp, Cts,
             pEncoderContext->mLastCTS);
         if ( Cts < pEncoderContext->mLastCTS ) {
-            LOGV("VideoEncoder_processOutputBuffer WARNING : Cts is going "
+            ALOGV("VideoEncoder_processOutputBuffer WARNING : Cts is going "
             "backwards %d < %d", Cts, pEncoderContext->mLastCTS);
             goto cleanUp;
         }
-        LOGV("VideoEditorVideoEncoder_processOutputBuffer : %d %d",
+        ALOGV("VideoEditorVideoEncoder_processOutputBuffer : %d %d",
             Cts, pEncoderContext->mLastCTS);
 
         // Retrieve the AU container
@@ -1243,7 +941,7 @@ M4OSA_ERR VideoEditorVideoEncoder_processOutputBuffer(
         pEncoderContext->mAccessUnit->CTS = Cts;
         pEncoderContext->mAccessUnit->DTS = Cts;
 
-        LOGV("VideoEditorVideoEncoder_processOutputBuffer: AU @ 0x%X 0x%X %d %d",
+        ALOGV("VideoEditorVideoEncoder_processOutputBuffer: AU @ 0x%X 0x%X %d %d",
             pEncoderContext->mAccessUnit->dataAddress,
             *pEncoderContext->mAccessUnit->dataAddress,
             pEncoderContext->mAccessUnit->size,
@@ -1259,13 +957,13 @@ M4OSA_ERR VideoEditorVideoEncoder_processOutputBuffer(
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_processOutputBuffer no error");
+        ALOGV("VideoEditorVideoEncoder_processOutputBuffer no error");
     } else {
         SAFE_FREE(pEncoderContext->mHeader.pBuf);
         pEncoderContext->mHeader.Size = 0;
-        LOGV("VideoEditorVideoEncoder_processOutputBuffer ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_processOutputBuffer ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_processOutputBuffer end");
+    ALOGV("VideoEditorVideoEncoder_processOutputBuffer end");
     return err;
 }
 
@@ -1277,7 +975,7 @@ M4OSA_ERR VideoEditorVideoEncoder_encode(M4ENCODER_Context pContext,
     status_t result = OK;
     MediaBuffer* outputBuffer = NULL;
 
-    LOGV("VideoEditorVideoEncoder_encode 0x%X %f %d", pInPlane, Cts, FrameMode);
+    ALOGV("VideoEditorVideoEncoder_encode 0x%X %f %d", pInPlane, Cts, FrameMode);
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
 
     pEncoderContext = (VideoEditorVideoEncoder_Context*)pContext;
@@ -1293,7 +991,7 @@ M4OSA_ERR VideoEditorVideoEncoder_encode(M4ENCODER_Context pContext,
     }
     pEncoderContext->mLastInputCts = Cts;
 
-    LOGV("VideoEditorVideoEncoder_encode 0x%X %d %f (%d)", pInPlane, FrameMode,
+    ALOGV("VideoEditorVideoEncoder_encode 0x%X %d %f (%d)", pInPlane, FrameMode,
         Cts, pEncoderContext->mLastCTS);
 
     // Push the input buffer to the encoder source
@@ -1340,11 +1038,11 @@ M4OSA_ERR VideoEditorVideoEncoder_encode(M4ENCODER_Context pContext,
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_encode no error");
+        ALOGV("VideoEditorVideoEncoder_encode no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_encode ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_encode ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_encode end");
+    ALOGV("VideoEditorVideoEncoder_encode end");
     return err;
 }
 
@@ -1353,7 +1051,7 @@ M4OSA_ERR VideoEditorVideoEncoder_start(M4ENCODER_Context pContext) {
     VideoEditorVideoEncoder_Context* pEncoderContext = M4OSA_NULL;
     status_t                   result          = OK;
 
-    LOGV("VideoEditorVideoEncoder_start begin");
+    ALOGV("VideoEditorVideoEncoder_start begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
 
@@ -1377,11 +1075,11 @@ M4OSA_ERR VideoEditorVideoEncoder_start(M4ENCODER_Context pContext) {
 
 cleanUp:
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_start no error");
+        ALOGV("VideoEditorVideoEncoder_start no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_start ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_start ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_start end");
+    ALOGV("VideoEditorVideoEncoder_start end");
     return err;
 }
 
@@ -1391,7 +1089,7 @@ M4OSA_ERR VideoEditorVideoEncoder_stop(M4ENCODER_Context pContext) {
     MediaBuffer* outputBuffer = NULL;
     status_t result = OK;
 
-    LOGV("VideoEditorVideoEncoder_stop begin");
+    ALOGV("VideoEditorVideoEncoder_stop begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
     pEncoderContext = (VideoEditorVideoEncoder_Context*)pContext;
@@ -1427,22 +1125,22 @@ M4OSA_ERR VideoEditorVideoEncoder_stop(M4ENCODER_Context pContext) {
     }
 
     if (pEncoderContext->mNbInputFrames != pEncoderContext->mNbOutputFrames) {
-        LOGW("Some frames were not encoded: input(%d) != output(%d)",
+        ALOGW("Some frames were not encoded: input(%d) != output(%d)",
             pEncoderContext->mNbInputFrames, pEncoderContext->mNbOutputFrames);
     }
 
 cleanUp:
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_stop no error");
+        ALOGV("VideoEditorVideoEncoder_stop no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_stop ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_stop ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_stop end");
+    ALOGV("VideoEditorVideoEncoder_stop end");
     return err;
 }
 
 M4OSA_ERR VideoEditorVideoEncoder_regulBitRate(M4ENCODER_Context pContext) {
-    LOGW("regulBitRate is not implemented");
+    ALOGW("regulBitRate is not implemented");
     return M4NO_ERROR;
 }
 
@@ -1451,7 +1149,7 @@ M4OSA_ERR VideoEditorVideoEncoder_setOption(M4ENCODER_Context pContext,
     M4OSA_ERR err = M4NO_ERROR;
     VideoEditorVideoEncoder_Context* pEncoderContext = M4OSA_NULL;
 
-    LOGV("VideoEditorVideoEncoder_setOption start optionID 0x%X", optionID);
+    ALOGV("VideoEditorVideoEncoder_setOption start optionID 0x%X", optionID);
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
 
@@ -1467,7 +1165,7 @@ M4OSA_ERR VideoEditorVideoEncoder_setOption(M4ENCODER_Context pContext,
                 (M4OSA_Context)optionValue;
             break;
         default:
-            LOGV("VideoEditorVideoEncoder_setOption: unsupported optionId 0x%X",
+            ALOGV("VideoEditorVideoEncoder_setOption: unsupported optionId 0x%X",
                 optionID);
             VIDEOEDITOR_CHECK(M4OSA_FALSE, M4ERR_BAD_OPTION_ID);
             break;
@@ -1475,11 +1173,11 @@ M4OSA_ERR VideoEditorVideoEncoder_setOption(M4ENCODER_Context pContext,
 
 cleanUp:
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_setOption no error");
+        ALOGV("VideoEditorVideoEncoder_setOption no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_setOption ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_setOption ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoEncoder_setOption end");
+    ALOGV("VideoEditorVideoEncoder_setOption end");
     return err;
 }
 
@@ -1488,7 +1186,7 @@ M4OSA_ERR VideoEditorVideoEncoder_getOption(M4ENCODER_Context pContext,
     M4OSA_ERR err = M4NO_ERROR;
     VideoEditorVideoEncoder_Context* pEncoderContext = M4OSA_NULL;
 
-    LOGV("VideoEditorVideoEncoder_getOption begin optinId 0x%X", optionID);
+    ALOGV("VideoEditorVideoEncoder_getOption begin optinId 0x%X", optionID);
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
     pEncoderContext = (VideoEditorVideoEncoder_Context*)pContext;
@@ -1500,7 +1198,7 @@ M4OSA_ERR VideoEditorVideoEncoder_getOption(M4ENCODER_Context pContext,
             *(M4ENCODER_Header**)optionValue = &(pEncoderContext->mHeader);
             break;
         default:
-            LOGV("VideoEditorVideoEncoder_getOption: unsupported optionId 0x%X",
+            ALOGV("VideoEditorVideoEncoder_getOption: unsupported optionId 0x%X",
                 optionID);
             VIDEOEDITOR_CHECK(M4OSA_FALSE, M4ERR_BAD_OPTION_ID);
             break;
@@ -1508,9 +1206,9 @@ M4OSA_ERR VideoEditorVideoEncoder_getOption(M4ENCODER_Context pContext,
 
 cleanUp:
     if ( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_getOption no error");
+        ALOGV("VideoEditorVideoEncoder_getOption no error");
     } else {
-        LOGV("VideoEditorVideoEncoder_getOption ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_getOption ERROR 0x%X", err);
     }
     return err;
 }
@@ -1524,7 +1222,7 @@ M4OSA_ERR VideoEditorVideoEncoder_getInterface(M4ENCODER_Format format,
     VIDEOEDITOR_CHECK(M4OSA_NULL != pFormat,           M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != pEncoderInterface, M4ERR_PARAMETER);
 
-    LOGV("VideoEditorVideoEncoder_getInterface begin 0x%x 0x%x %d", pFormat,
+    ALOGV("VideoEditorVideoEncoder_getInterface begin 0x%x 0x%x %d", pFormat,
         pEncoderInterface, mode);
 
     SAFE_MALLOC(*pEncoderInterface, M4ENCODER_GlobalInterface, 1,
@@ -1552,7 +1250,7 @@ M4OSA_ERR VideoEditorVideoEncoder_getInterface(M4ENCODER_Format format,
                 break;
             }
         default:
-            LOGV("VideoEditorVideoEncoder_getInterface : unsupported format %d",
+            ALOGV("VideoEditorVideoEncoder_getInterface : unsupported format %d",
                 format);
             VIDEOEDITOR_CHECK(M4OSA_FALSE, M4ERR_PARAMETER);
         break;
@@ -1572,10 +1270,10 @@ M4OSA_ERR VideoEditorVideoEncoder_getInterface(M4ENCODER_Format format,
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoEncoder_getInterface no error");
+        ALOGV("VideoEditorVideoEncoder_getInterface no error");
     } else {
         *pEncoderInterface = M4OSA_NULL;
-        LOGV("VideoEditorVideoEncoder_getInterface ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoEncoder_getInterface ERROR 0x%X", err);
     }
     return err;
 }

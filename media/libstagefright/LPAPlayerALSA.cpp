@@ -19,7 +19,7 @@
  */
 
 #define LOG_NDDEBUG 0
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "LPAPlayerALSA"
 
 #include <utils/Log.h>
@@ -52,10 +52,7 @@
 static const char   mName[] = "LPAPlayer";
 
 #define MEM_METADATA_SIZE 64
-#ifndef LPA_DEFAULT_BUFFER_SIZE
-#define LPA_DEFAULT_BUFFER_SIZE 256
-#endif
-#define MEM_BUFFER_SIZE ((LPA_DEFAULT_BUFFER_SIZE*1024) - MEM_METADATA_SIZE)
+#define MEM_BUFFER_SIZE ((256*1024) - MEM_METADATA_SIZE)
 #define MEM_BUFFER_COUNT 4
 #define PCM_FORMAT 2
 #define NUM_FDS 2
@@ -303,7 +300,9 @@ status_t LPAPlayer::start(bool sourceAlreadyStarted) {
     mStarted = true;
     mAudioSink->start();
     ALOGV("Waking up decoder thread");
-    pthread_cond_signal(&decoder_cv);
+    mLock.lock();
+    mDecoderCv.signal();
+    mLock.unlock();
 
     return OK;
 }
@@ -312,11 +311,18 @@ status_t LPAPlayer::seekTo(int64_t time_us) {
     Mutex::Autolock autoLock(mLock);
     ALOGV("seekTo: time_us %lld", time_us);
 
-    if (seekTooClose(time_us)) {
-        mLock.unlock();
-        mObserver->postAudioSeekComplete();
-        mLock.lock();
-        return OK;
+    int64_t mediaTimeUs = getMediaTimeUs_l();
+
+    if (mediaTimeUs != 0) {
+      //check for return conditions only if seektime
+      // is set
+      int64_t diffUs = time_us - mediaTimeUs;
+
+      if (labs(diffUs) < LPA_BUFFER_TIME) {
+          ALOGV("In seekTo(), ignoring time_us %lld mSeekTimeUs %lld", time_us, mSeekTimeUs);
+          mObserver->postAudioSeekComplete();
+          return OK;
+      }
     }
 
     mSeeking = true;
@@ -333,7 +339,7 @@ status_t LPAPlayer::seekTo(int64_t time_us) {
         mReachedOutputEOS = false;
         if(mPaused == false) {
             ALOGV("Going to signal decoder thread since playback is already going on ");
-            pthread_cond_signal(&decoder_cv);
+            mDecoderCv.signal();
             ALOGV("Signalled extractor thread.");
         }
     }
@@ -396,7 +402,7 @@ void LPAPlayer::resume() {
         }
         mPaused = false;
         mAudioSink->start();
-        pthread_cond_signal(&decoder_cv);
+        mDecoderCv.signal();
     }
 }
 
@@ -433,7 +439,7 @@ void LPAPlayer::reset() {
 
     // make sure Decoder thread has exited
     ALOGD("Closing all the threads");
-    requestAndWaitForDecoderThreadExit();
+    requestAndWaitForDecoderThreadExit_l();
     requestAndWaitForA2DPNotificationThreadExit();
 
     ALOGD("Close the Sink");
@@ -498,18 +504,17 @@ void *LPAPlayer::decoderThreadWrapper(void *me) {
 
 void LPAPlayer::decoderThreadEntry() {
 
-    pthread_mutex_lock(&decoder_mutex);
-
+    mLock.lock();
     pid_t tid  = gettid();
     androidSetThreadPriority(tid, ANDROID_PRIORITY_AUDIO);
     prctl(PR_SET_NAME, (unsigned long)"LPA DecodeThread", 0, 0, 0);
 
     ALOGV("decoderThreadEntry wait for signal \n");
     if (!mStarted) {
-        pthread_cond_wait(&decoder_cv, &decoder_mutex);
+        mDecoderCv.wait(mLock);
     }
     ALOGV("decoderThreadEntry ready to work \n");
-    pthread_mutex_unlock(&decoder_mutex);
+    mLock.unlock();
     if (killDecoderThread) {
         return;
     }
@@ -536,9 +541,9 @@ void LPAPlayer::decoderThreadEntry() {
             ALOGV("Going to sleep before write since "
                   "mReachedEOS %d, mPaused %d, mIsAudioRouted %d",
                   mReachedEOS, mPaused, mIsAudioRouted);
-            pthread_mutex_lock(&decoder_mutex);
-            pthread_cond_wait(&decoder_cv, &decoder_mutex);
-            pthread_mutex_unlock(&decoder_mutex);
+            mDecoderMutex.lock();
+            mDecoderCv.wait(mDecoderMutex);
+            mDecoderMutex.unlock();
             ALOGV("Woke up from sleep before write since "
                   "mReachedEOS %d, mPaused %d, mIsAudioRouted %d",
                   mReachedEOS, mPaused, mIsAudioRouted);
@@ -569,12 +574,12 @@ void LPAPlayer::decoderThreadEntry() {
                     //write only if player is not in paused state. Sleep on lock
                     // resume is called
                     ALOGV("Going to sleep in decodethreadiwrite since sink is paused");
-                    pthread_mutex_lock(&decoder_mutex);
-                    pthread_cond_wait(&decoder_cv, &decoder_mutex);
+                    mDecoderMutex.lock();
+                    mDecoderCv.wait(mDecoderMutex);
                     ALOGV("Going to unlock n decodethreadwrite since sink "
                           "resumed mPaused %d, mIsAudioRouted %d, mReachedEOS %d",
                           mPaused, mIsAudioRouted, mReachedEOS);
-                    pthread_mutex_unlock(&decoder_mutex);
+                    mDecoderMutex.unlock();
                 }
                 mLock.lock();
                 lSeeking = mSeeking||mInternalSeeking;
@@ -604,9 +609,9 @@ void *LPAPlayer::A2DPNotificationThreadWrapper(void *me) {
 
 void LPAPlayer::A2DPNotificationThreadEntry() {
     while (1) {
-        pthread_mutex_lock(&a2dp_notification_mutex);
-        pthread_cond_wait(&a2dp_notification_cv, &a2dp_notification_mutex);
-        pthread_mutex_unlock(&a2dp_notification_mutex);
+        mA2dpNotificationMutex.lock();
+        mA2dpNotificationCv.wait(mA2dpNotificationMutex);
+        mA2dpNotificationMutex.unlock();
         if (killA2DPNotificationThread) {
             break;
         }
@@ -626,12 +631,6 @@ void LPAPlayer::A2DPNotificationThreadEntry() {
 }
 
 void LPAPlayer::createThreads() {
-
-    //Initialize all the Mutexes and Condition Variables
-    pthread_mutex_init(&decoder_mutex, NULL);
-    pthread_mutex_init(&a2dp_notification_mutex, NULL);
-    pthread_cond_init (&decoder_cv, NULL);
-    pthread_cond_init (&a2dp_notification_cv, NULL);
 
     // Create 4 threads Effect, decoder, event and A2dp
     pthread_attr_t attr;
@@ -803,9 +802,7 @@ int64_t LPAPlayer::getTimeStamp(A2DPState state) {
     return timestamp;
 }
 
-int64_t LPAPlayer::getMediaTimeUs_l( ) {
-    ALOGV("getMediaTimeUs() mPaused %d mSeekTimeUs %lld mPauseTime %lld",
-          mPaused, mSeekTimeUs, mPauseTime);
+int64_t LPAPlayer::getMediaTimeUs_l() {
     if (mPaused) {
         return mPauseTime;
     } else {
@@ -829,7 +826,7 @@ bool LPAPlayer::getMediaTimeMapping(
 }
 
 //lock taken in reset()
-void LPAPlayer::requestAndWaitForDecoderThreadExit() {
+void LPAPlayer::requestAndWaitForDecoderThreadExit_l() {
 
     if (!decoderThreadAlive)
         return;
@@ -840,7 +837,7 @@ void LPAPlayer::requestAndWaitForDecoderThreadExit() {
     if (!mReachedOutputEOS && mIsAudioRouted)
         mAudioSink->flush();
 
-    pthread_cond_signal(&decoder_cv);
+    mDecoderCv.signal();
     mLock.unlock();
     pthread_join(decoderThread,NULL);
     mLock.lock();
@@ -852,7 +849,7 @@ void LPAPlayer::requestAndWaitForA2DPNotificationThreadExit() {
     if (!a2dpNotificationThreadAlive)
         return;
     killA2DPNotificationThread = true;
-    pthread_cond_signal(&a2dp_notification_cv);
+    mA2dpNotificationCv.signal();
     pthread_join(A2DPNotificationThread,NULL);
     ALOGV("a2dp notification thread killed");
 }
@@ -900,22 +897,6 @@ void LPAPlayer::convertMonoToStereo(int16_t *data, size_t size)
       *(start_pointer + (i*2) - 1) = temp_sample;
       *(start_pointer + (i*2) - 2) = temp_sample;
     }
-}
-
-bool LPAPlayer::seekTooClose(int64_t time_us) {
-    int64_t t1 = getMediaTimeUs_l();
-    /*
-     * empirical
-     * -----------
-     * This constant signifies how much data (in Us) has been rendered by the
-     * DSP in the interval between the moment flush is issued on AudioSink to
-     * after ioctl(PAUSE) returns in Audio HAL. (flush triggers an implicit
-     * pause in audio HAL)
-     *
-     */
-    const int64_t kDeltaUs = 60000LL; /* 60-70ms on msm8974, must be measured for other targets */
-    t1 += kDeltaUs;
-    return (time_us > t1) && ((time_us - t1) <= LPA_BUFFER_TIME);
 }
 
 } //namespace android

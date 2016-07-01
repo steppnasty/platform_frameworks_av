@@ -35,8 +35,6 @@
 
 #include <media/Metadata.h>
 #include <media/stagefright/MediaSource.h>
-#include <media/stagefright/foundation/AString.h>
-#include <media/stagefright/MediaCodecList.h>
 
 #include <utils/Errors.h>
 #include <sys/types.h>
@@ -49,9 +47,11 @@
 
 #include <OMX_Video.h>
 #include <media/stagefright/MediaExtractor.h>
-#include <media/stagefright/MetaData.h>
 #include <media/stagefright/MediaDebug.h>
 #include <media/stagefright/MediaDefs.h>
+
+#define MIN_BITERATE_AAC 24000
+#define MAX_BITERATE_AAC 192000
 
 namespace android {
 
@@ -92,19 +92,15 @@ struct QCUtilityClass
     //helper function to setBframe related info for H264 type
     static void helper_OMXCodec_setBFrames(OMX_VIDEO_PARAM_AVCTYPE &h264type, bool &numBFrames,
                                            int32_t iFramesInterval, int32_t frameRate);
-
-    //helper function to add media codecs with specific quirks
-    static void helper_addMediaCodec(Vector<MediaCodecList::CodecInfo> &mCodecInfos,
-                                     KeyedVector<AString, size_t> &mTypes,
-                                     bool encoder, const char *name,
-                                     const char *type, uint32_t quirks);
-
-    //helper function to calculate the value of quirks from strings
-    static uint32_t helper_getCodecSpecificQuirks(KeyedVector<AString, size_t> &mCodecQuirks,
-                                                  Vector<AString> quirks);
     static sp<MediaExtractor> helper_MediaExtractor_CreateIfNeeded(sp<MediaExtractor> defaultExt,
                                                                     const sp<DataSource> &source,
                                                                                 const char *mime);
+    //helper function for MPEG4 Extractor to check for AC3/EAC3 contents
+    static void helper_mpeg4extractor_checkAC3EAC3(MediaBuffer *buffer, sp<MetaData> &format,
+                                                   size_t size);
+
+    static bool UseQCHWAACEncoder(audio_encoder Encoder,int32_t Channel,int32_t BitRate, int32_t SampleRate);
+
 };
 
 }

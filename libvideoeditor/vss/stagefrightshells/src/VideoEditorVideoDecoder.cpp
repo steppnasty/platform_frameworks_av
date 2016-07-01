@@ -29,14 +29,12 @@
 #include "VideoEditorUtils.h"
 #include "M4VD_Tools.h"
 
+#include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/MediaDefs.h>
-#include <media/stagefright/MediaDebug.h>
-
 /********************
  *   DEFINITIONS    *
  ********************/
-
 #define MAX_DEC_BUFFERS 10
 
 /********************
@@ -102,13 +100,13 @@ status_t VideoEditorVideoDecoderSource::start(
 
     if (!mStarted) {
         if (mFormat->findInt32(kKeyMaxInputSize, &mMaxAUSize) == false) {
-            LOGE("Could not find kKeyMaxInputSize");
+            ALOGE("Could not find kKeyMaxInputSize");
             return ERROR_MALFORMED;
         }
 
         mGroup = new MediaBufferGroup;
         if (mGroup == NULL) {
-            LOGE("FATAL: memory limitation ! ");
+            ALOGE("FATAL: memory limitation ! ");
             return NO_MEMORY;
         }
 
@@ -126,7 +124,7 @@ status_t VideoEditorVideoDecoderSource::stop() {
             // FIXME:
             // Why do we need to check on the ref count?
             int ref_count = mBuffer->refcount();
-            LOGV("MediaBuffer refcount is %d",ref_count);
+            ALOGV("MediaBuffer refcount is %d",ref_count);
             for (int i = 0; i < ref_count; ++i) {
                 mBuffer->release();
             }
@@ -155,7 +153,7 @@ status_t VideoEditorVideoDecoderSource::read(MediaBuffer** buffer_out,
         MediaSource::ReadOptions::SeekMode mode;
         options->getSeekTo(&time_us, &mode);
         if (mode != MediaSource::ReadOptions::SEEK_PREVIOUS_SYNC) {
-            LOGE("Unexpected read options");
+            ALOGE("Unexpected read options");
             return BAD_VALUE;
         }
 
@@ -173,7 +171,7 @@ status_t VideoEditorVideoDecoderSource::read(MediaBuffer** buffer_out,
             rapTime -= 40000;
             if(rapTime < 0) rapTime = 0;
         } else if (err != OK) {
-            LOGE("get rap time error = 0x%x\n", (uint32_t)err);
+            ALOGE("get rap time error = 0x%x\n", (uint32_t)err);
             return UNKNOWN_ERROR;
         }
 
@@ -183,7 +181,7 @@ status_t VideoEditorVideoDecoderSource::read(MediaBuffer** buffer_out,
                    &rapTime);
 
         if (err != OK) {
-            LOGE("jump err = 0x%x\n", (uint32_t)err);
+            ALOGE("jump err = 0x%x\n", (uint32_t)err);
             return BAD_VALUE;
         }
     }
@@ -644,13 +642,13 @@ void logSupportDecodersAndCapabilities(M4DECODER_VideoDecoders* decoders) {
     VideoProfileLevel *pProfileLevel = NULL;
     pDecoder = decoders->decoder;
     for (size_t i = 0; i< decoders->decoderNumber; i++) {
-        LOGV("Supported Codec[%d] :%d", i, pDecoder->codec);
+        ALOGV("Supported Codec[%d] :%d", i, pDecoder->codec);
         pOmxComponents = pDecoder->component;
         for(size_t j = 0; j <  pDecoder->componentNumber; j++) {
            pProfileLevel = pOmxComponents->profileLevel;
-           LOGV("-->component %d", j);
+           ALOGV("-->component %d", j);
            for(size_t k = 0; k < pOmxComponents->profileNumber; k++) {
-               LOGV("-->profile:%ld maxLevel:%ld", pProfileLevel->mProfile,
+               ALOGV("-->profile:%ld maxLevel:%ld", pProfileLevel->mProfile,
                    pProfileLevel->mLevel);
                pProfileLevel++;
            }
@@ -693,17 +691,17 @@ M4OSA_ERR queryVideoDecoderCapabilities
             if (results.size()) {
                 SAFE_MALLOC(pOmxComponents, VideoComponentCapabilities,
                     results.size(), "VideoComponentCapabilities");
-                LOGV("K=%d",k);
+                ALOGV("K=%d",k);
                 pDecoder->component = pOmxComponents;
                 pDecoder->componentNumber = results.size();
             }
 
             for (size_t i = 0; i < results.size(); ++i) {
-                LOGV("  decoder '%s' supports ",
+                ALOGV("  decoder '%s' supports ",
                        results[i].mComponentName.string());
 
                 if (results[i].mProfileLevels.size() == 0) {
-                    LOGV("NOTHING.\n");
+                    ALOGV("NOTHING.\n");
                     continue;
                 }
 
@@ -712,7 +710,7 @@ M4OSA_ERR queryVideoDecoderCapabilities
                 // We should ignore the software codecs and make IsSoftwareCodec()
                 // part of pubic API from OMXCodec.cpp
                 if (IsSoftwareCodec(results[i].mComponentName.string())) {
-                    LOGV("Ignore software codec %s", results[i].mComponentName.string());
+                    ALOGV("Ignore software codec %s", results[i].mComponentName.string());
                     continue;
                 }
 #endif
@@ -746,7 +744,7 @@ M4OSA_ERR queryVideoDecoderCapabilities
                         maxLevel = profileLevel.mLevel;
                         pProfileLevel->mProfile = profile;
                         pProfileLevel->mLevel = maxLevel;
-                        LOGV("%d profile: %ld, max level: %ld",
+                        ALOGV("%d profile: %ld, max level: %ld",
                             __LINE__, pProfileLevel->mProfile, pProfileLevel->mLevel);
                     }
                     if (profileLevel.mProfile != profile) {
@@ -756,12 +754,12 @@ M4OSA_ERR queryVideoDecoderCapabilities
                         pProfileLevel++;
                         pProfileLevel->mProfile = profile;
                         pProfileLevel->mLevel = maxLevel;
-                        LOGV("%d profile: %ld, max level: %ld",
+                        ALOGV("%d profile: %ld, max level: %ld",
                             __LINE__, pProfileLevel->mProfile, pProfileLevel->mLevel);
                     } else if (profileLevel.mLevel > maxLevel) {
                         maxLevel = profileLevel.mLevel;
                         pProfileLevel->mLevel = maxLevel;
-                        LOGV("%d profile: %ld, max level: %ld",
+                        ALOGV("%d profile: %ld, max level: %ld",
                             __LINE__, pProfileLevel->mProfile, pProfileLevel->mLevel);
                     }
 
@@ -800,7 +798,7 @@ M4OSA_ERR VideoEditorVideoDecoder_configureFromMetadata(M4OSA_Context pContext,
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != meta,     M4ERR_PARAMETER);
 
-    LOGV("VideoEditorVideoDecoder_configureFromMetadata begin");
+    ALOGV("VideoEditorVideoDecoder_configureFromMetadata begin");
 
     pDecShellContext = (VideoEditorVideoDecoder_Context*)pContext;
 
@@ -809,7 +807,7 @@ M4OSA_ERR VideoEditorVideoDecoder_configureFromMetadata(M4OSA_Context pContext,
     success = meta->findInt32(kKeyHeight, &vHeight);
     VIDEOEDITOR_CHECK(TRUE == success, M4ERR_PARAMETER);
 
-    LOGV("vWidth = %d, vHeight = %d", vWidth, vHeight);
+    ALOGV("vWidth = %d, vHeight = %d", vWidth, vHeight);
 
     pDecShellContext->mGivenWidth = vWidth;
     pDecShellContext->mGivenHeight = vHeight;
@@ -821,9 +819,9 @@ M4OSA_ERR VideoEditorVideoDecoder_configureFromMetadata(M4OSA_Context pContext,
         cropRight = vWidth - 1;
         cropBottom = vHeight - 1;
 
-        LOGV("got dimensions only %d x %d", width, height);
+        ALOGV("got dimensions only %d x %d", width, height);
     } else {
-        LOGV("got crop rect %d, %d, %d, %d",
+        ALOGV("got crop rect %d, %d, %d, %d",
              cropLeft, cropTop, cropRight, cropBottom);
     }
 
@@ -832,10 +830,10 @@ M4OSA_ERR VideoEditorVideoDecoder_configureFromMetadata(M4OSA_Context pContext,
     pDecShellContext->mCropRect.top = cropTop;
     pDecShellContext->mCropRect.bottom = cropBottom;
 
-    width = cropRight - cropLeft + 1;
-    height = cropBottom - cropTop + 1;
+    width = vWidth;
+    height = vHeight;
 
-    LOGV("VideoDecoder_configureFromMetadata : W=%d H=%d", width, height);
+    ALOGV("VideoDecoder_configureFromMetadata : W=%d H=%d", width, height);
     VIDEOEDITOR_CHECK((0 != width) && (0 != height), M4ERR_PARAMETER);
 
     if( (M4OSA_NULL != pDecShellContext->m_pDecBufferPool) &&
@@ -846,14 +844,15 @@ M4OSA_ERR VideoEditorVideoDecoder_configureFromMetadata(M4OSA_Context pContext,
         // No need to reconfigure
         goto cleanUp;
     }
-    LOGV("VideoDecoder_configureFromMetadata  reset: W=%d H=%d", width, height);
+    ALOGV("VideoDecoder_configureFromMetadata  reset: W=%d H=%d", width, height);
     // Update the stream handler parameters
     pDecShellContext->m_pVideoStreamhandler->m_videoWidth  = width;
     pDecShellContext->m_pVideoStreamhandler->m_videoHeight = height;
     frameSize = (width * height * 3) / 2;
+
     // Configure the buffer pool
     if( M4OSA_NULL != pDecShellContext->m_pDecBufferPool ) {
-        LOGV("VideoDecoder_configureFromMetadata : reset the buffer pool");
+        ALOGV("VideoDecoder_configureFromMetadata : reset the buffer pool");
         VIDEOEDITOR_BUFFER_freePool(pDecShellContext->m_pDecBufferPool);
         pDecShellContext->m_pDecBufferPool = M4OSA_NULL;
     }
@@ -861,20 +860,21 @@ M4OSA_ERR VideoEditorVideoDecoder_configureFromMetadata(M4OSA_Context pContext,
         MAX_DEC_BUFFERS, (M4OSA_Char*)"VIDEOEDITOR_DecodedBufferPool");
     VIDEOEDITOR_CHECK(M4NO_ERROR == err, err);
     err = VIDEOEDITOR_BUFFER_initPoolBuffers(pDecShellContext->m_pDecBufferPool,
-                    frameSize);
+                frameSize + pDecShellContext->mGivenWidth * 2);
+
     VIDEOEDITOR_CHECK(M4NO_ERROR == err, err);
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoDecoder_configureFromMetadata no error");
+        ALOGV("VideoEditorVideoDecoder_configureFromMetadata no error");
     } else {
         if( M4OSA_NULL != pDecShellContext->m_pDecBufferPool ) {
             VIDEOEDITOR_BUFFER_freePool(pDecShellContext->m_pDecBufferPool);
             pDecShellContext->m_pDecBufferPool = M4OSA_NULL;
         }
-        LOGV("VideoEditorVideoDecoder_configureFromMetadata ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoDecoder_configureFromMetadata ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoDecoder_configureFromMetadata end");
+    ALOGV("VideoEditorVideoDecoder_configureFromMetadata end");
     return err;
 }
 
@@ -884,17 +884,15 @@ M4OSA_ERR VideoEditorVideoDecoder_destroy(M4OSA_Context pContext) {
         (VideoEditorVideoDecoder_Context*)pContext;
 
     // Input parameters check
-    LOGV("VideoEditorVideoDecoder_destroy begin");
+    ALOGV("VideoEditorVideoDecoder_destroy begin");
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext, M4ERR_PARAMETER);
 
     // Release the color converter
-    if (pDecShellContext->mI420ColorConverter) {
-        delete pDecShellContext->mI420ColorConverter;
-    }
+    delete pDecShellContext->mI420ColorConverter;
 
     // Destroy the graph
     if( pDecShellContext->mVideoDecoder != NULL ) {
-        LOGV("### VideoEditorVideoDecoder_destroy : releasing decoder");
+        ALOGV("### VideoEditorVideoDecoder_destroy : releasing decoder");
         pDecShellContext->mVideoDecoder->stop();
         pDecShellContext->mVideoDecoder.clear();
     }
@@ -911,11 +909,11 @@ M4OSA_ERR VideoEditorVideoDecoder_destroy(M4OSA_Context pContext) {
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoDecoder_destroy no error");
+        ALOGV("VideoEditorVideoDecoder_destroy no error");
     } else {
-        LOGE("VideoEditorVideoDecoder_destroy ERROR %d", err);
+        ALOGV("VideoEditorVideoDecoder_destroy ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoDecoder_destroy end");
+    ALOGV("VideoEditorVideoDecoder_destroy end");
     return err;
 }
 
@@ -932,9 +930,8 @@ M4OSA_ERR VideoEditorVideoDecoder_create(M4OSA_Context *pContext,
     M4OSA_UInt32 size = 0;
     sp<MetaData> decoderMetadata = NULL;
     int decoderOutput = OMX_COLOR_FormatYUV420Planar;
-    uint32_t flags = 0;
 
-    LOGV("VideoEditorVideoDecoder_create begin");
+    ALOGV("VideoEditorVideoDecoder_create begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext,             M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != pStreamHandler,       M4ERR_PARAMETER);
@@ -984,6 +981,11 @@ M4OSA_ERR VideoEditorVideoDecoder_create(M4OSA_Context *pContext,
     pDecShellContext->mFirstOutputCts    = -1;
     pDecShellContext->mLastOutputCts     = -1;
     pDecShellContext->m_pDecBufferPool   = M4OSA_NULL;
+
+    // Calculate the interval between two video frames.
+    CHECK(pDecShellContext->m_pVideoStreamhandler->m_averageFrameRate > 0);
+    pDecShellContext->mFrameIntervalMs =
+            1000.0 / pDecShellContext->m_pVideoStreamhandler->m_averageFrameRate;
 
     /**
      * StageFright graph building
@@ -1031,9 +1033,10 @@ M4OSA_ERR VideoEditorVideoDecoder_create(M4OSA_Context *pContext,
     // Create the decoder
     pDecShellContext->mVideoDecoder = OMXCodec::Create(
         pDecShellContext->mClient.interface(),
-        decoderMetadata, false, pDecShellContext->mReaderSource, NULL, flags);
+        decoderMetadata, false, pDecShellContext->mReaderSource);
     VIDEOEDITOR_CHECK(NULL != pDecShellContext->mVideoDecoder.get(),
         M4ERR_SF_DECODER_RSRC_FAIL);
+
 
     // Get the output color format
     success = pDecShellContext->mVideoDecoder->getFormat()->findInt32(
@@ -1046,6 +1049,7 @@ M4OSA_ERR VideoEditorVideoDecoder_create(M4OSA_Context *pContext,
     pDecShellContext->mVideoDecoder->getFormat()->setInt32(kKeyHeight,
         pDecShellContext->m_pVideoStreamhandler->m_videoHeight);
 
+    // Get the color converter
     pDecShellContext->mI420ColorConverter = new I420ColorConverter;
     if (pDecShellContext->mI420ColorConverter->isLoaded()) {
         decoderOutput = pDecShellContext->mI420ColorConverter->getDecoderOutputFormat();
@@ -1056,7 +1060,7 @@ M4OSA_ERR VideoEditorVideoDecoder_create(M4OSA_Context *pContext,
         pDecShellContext->mI420ColorConverter = NULL;
     }
 
-    LOGV("decoder output format = 0x%X\n", decoderOutput);
+    ALOGI("decoder output format = 0x%X\n", decoderOutput);
 
     // Configure the buffer pool from the metadata
     err = VideoEditorVideoDecoder_configureFromMetadata(pDecShellContext,
@@ -1071,14 +1075,13 @@ M4OSA_ERR VideoEditorVideoDecoder_create(M4OSA_Context *pContext,
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoDecoder_create no error");
+        ALOGV("VideoEditorVideoDecoder_create no error");
     } else {
         VideoEditorVideoDecoder_destroy(pDecShellContext);
         *pContext = M4OSA_NULL;
-        LOGV("VideoEditorVideoDecoder_create ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoDecoder_create ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoDecoder_create : DONE");
-
+    ALOGV("VideoEditorVideoDecoder_create : DONE");
     return err;
 }
 
@@ -1095,7 +1098,7 @@ M4OSA_ERR VideoEditorVideoSoftwareDecoder_create(M4OSA_Context *pContext,
     M4OSA_UInt32 size = 0;
     sp<MetaData> decoderMetadata = NULL;
 
-    LOGV("VideoEditorVideoDecoder_create begin");
+    ALOGV("VideoEditorVideoDecoder_create begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != pContext,             M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != pStreamHandler,       M4ERR_PARAMETER);
@@ -1189,7 +1192,7 @@ M4OSA_ERR VideoEditorVideoSoftwareDecoder_create(M4OSA_Context *pContext,
     status = pDecShellContext->mClient.connect();
     VIDEOEDITOR_CHECK(OK == status, M4ERR_SF_DECODER_RSRC_FAIL);
 
-     LOGI("Using software codecs only");
+     ALOGI("Using software codecs only");
     // Create the decoder
     pDecShellContext->mVideoDecoder = OMXCodec::Create(
         pDecShellContext->mClient.interface(),
@@ -1221,13 +1224,13 @@ M4OSA_ERR VideoEditorVideoSoftwareDecoder_create(M4OSA_Context *pContext,
 
 cleanUp:
     if( M4NO_ERROR == err ) {
-        LOGV("VideoEditorVideoDecoder_create no error");
+        ALOGV("VideoEditorVideoDecoder_create no error");
     } else {
         VideoEditorVideoDecoder_destroy(pDecShellContext);
         *pContext = M4OSA_NULL;
-        LOGV("VideoEditorVideoDecoder_create ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoDecoder_create ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoDecoder_create : DONE");
+    ALOGV("VideoEditorVideoDecoder_create : DONE");
     return err;
 }
 
@@ -1244,7 +1247,7 @@ M4OSA_ERR VideoEditorVideoDecoder_getOption(M4OSA_Context context,
     M4DECODER_AVCProfileLevel* profile;
     M4DECODER_MPEG4_DecoderConfigInfo* pDecConfInfo;
 
-    LOGV("VideoEditorVideoDecoder_getOption begin");
+    ALOGV("VideoEditorVideoDecoder_getOption begin");
 
     switch (optionId) {
         case M4DECODER_kOptionID_AVCLastDecodedFrameCTS:
@@ -1268,7 +1271,7 @@ M4OSA_ERR VideoEditorVideoDecoder_getOption(M4OSA_Context context,
                 (int32_t*)(&pVideoSize->m_uiWidth));
             pDecShellContext->mVideoDecoder->getFormat()->findInt32(kKeyHeight,
                 (int32_t*)(&pVideoSize->m_uiHeight));
-            LOGV("VideoEditorVideoDecoder_getOption : W=%d H=%d",
+            ALOGV("VideoEditorVideoDecoder_getOption : W=%d H=%d",
                 pVideoSize->m_uiWidth, pVideoSize->m_uiHeight);
             break;
 
@@ -1291,7 +1294,7 @@ M4OSA_ERR VideoEditorVideoDecoder_getOption(M4OSA_Context context,
 
     }
 
-    LOGV("VideoEditorVideoDecoder_getOption: end with err = 0x%x", lerr);
+    ALOGV("VideoEditorVideoDecoder_getOption: end with err = 0x%x", lerr);
     return lerr;
 }
 
@@ -1301,7 +1304,7 @@ M4OSA_ERR VideoEditorVideoDecoder_setOption(M4OSA_Context context,
     VideoEditorVideoDecoder_Context *pDecShellContext =
         (VideoEditorVideoDecoder_Context*) context;
 
-    LOGV("VideoEditorVideoDecoder_setOption begin");
+    ALOGV("VideoEditorVideoDecoder_setOption begin");
 
     switch (optionId) {
         case M4DECODER_kOptionID_OutputFilter: {
@@ -1321,7 +1324,7 @@ M4OSA_ERR VideoEditorVideoDecoder_setOption(M4OSA_Context context,
             break;
     }
 
-    LOGV("VideoEditorVideoDecoder_setOption: end with err = 0x%x", lerr);
+    ALOGV("VideoEditorVideoDecoder_setOption: end with err = 0x%x", lerr);
     return lerr;
 }
 
@@ -1336,21 +1339,21 @@ M4OSA_ERR VideoEditorVideoDecoder_decode(M4OSA_Context context,
     status_t errStatus;
     bool needSeek = bJump;
 
-    LOGV("VideoEditorVideoDecoder_decode begin");
+    ALOGV("VideoEditorVideoDecoder_decode begin");
 
     if( M4OSA_TRUE == pDecShellContext->mReachedEOS ) {
         // Do not call read(), it could lead to a freeze
-        LOGV("VideoEditorVideoDecoder_decode : EOS already reached");
+        ALOGV("VideoEditorVideoDecoder_decode : EOS already reached");
         lerr = M4WAR_NO_MORE_AU;
         goto VIDEOEDITOR_VideoDecode_cleanUP;
     }
     if(pDecShellContext->m_lastDecodedCTS >= *pTime) {
-        LOGV("VideoDecoder_decode: Already decoded up to this time CTS = %lf.",
+        ALOGV("VideoDecoder_decode: Already decoded up to this time CTS = %lf.",
             pDecShellContext->m_lastDecodedCTS);
         goto VIDEOEDITOR_VideoDecode_cleanUP;
     }
     if(M4OSA_TRUE == bJump) {
-        LOGV("VideoEditorVideoDecoder_decode: Jump called");
+        ALOGV("VideoEditorVideoDecoder_decode: Jump called");
         pDecShellContext->m_lastDecodedCTS = -1;
         pDecShellContext->m_lastRenderCts = -1;
     }
@@ -1362,7 +1365,7 @@ M4OSA_ERR VideoEditorVideoDecoder_decode(M4OSA_Context context,
     pDecShellContext->mLastInputCts = *pTime;
 
     while (pDecoderBuffer == NULL || pDecShellContext->m_lastDecodedCTS + tolerance < *pTime) {
-        LOGV("VideoEditorVideoDecoder_decode, frameCTS = %lf, DecodeUpTo = %lf",
+        ALOGV("VideoEditorVideoDecoder_decode, frameCTS = %lf, DecodeUpTo = %lf",
             pDecShellContext->m_lastDecodedCTS, *pTime);
 
         // Read the buffer from the stagefright decoder
@@ -1378,7 +1381,7 @@ M4OSA_ERR VideoEditorVideoDecoder_decode(M4OSA_Context context,
 
         // Handle EOS and format change
         if (errStatus == ERROR_END_OF_STREAM) {
-            LOGV("End of stream reached, returning M4WAR_NO_MORE_AU ");
+            ALOGV("End of stream reached, returning M4WAR_NO_MORE_AU ");
             pDecShellContext->mReachedEOS = M4OSA_TRUE;
             lerr = M4WAR_NO_MORE_AU;
             // If we decoded a buffer before EOS, we still need to put it
@@ -1388,18 +1391,18 @@ M4OSA_ERR VideoEditorVideoDecoder_decode(M4OSA_Context context,
             }
             goto VIDEOEDITOR_VideoDecode_cleanUP;
         } else if (INFO_FORMAT_CHANGED == errStatus) {
-            LOGV("VideoDecoder_decode : source returns INFO_FORMAT_CHANGED");
+            ALOGV("VideoDecoder_decode : source returns INFO_FORMAT_CHANGED");
             lerr = VideoEditorVideoDecoder_configureFromMetadata(
                 pDecShellContext,
                 pDecShellContext->mVideoDecoder->getFormat().get());
             if( M4NO_ERROR != lerr ) {
-                LOGV("!!! VideoEditorVideoDecoder_decode ERROR : "
+                ALOGV("!!! VideoEditorVideoDecoder_decode ERROR : "
                     "VideoDecoder_configureFromMetadata returns 0x%X", lerr);
                 break;
             }
             continue;
         } else if (errStatus != OK) {
-            LOGE("VideoEditorVideoDecoder_decode ERROR:0x%x(%d)",
+            ALOGE("VideoEditorVideoDecoder_decode ERROR:0x%x(%d)",
                 errStatus,errStatus);
             lerr = errStatus;
             goto VIDEOEDITOR_VideoDecode_cleanUP;
@@ -1422,23 +1425,32 @@ M4OSA_ERR VideoEditorVideoDecoder_decode(M4OSA_Context context,
         // Record the timestamp of last decoded buffer
         pDecoderBuffer->meta_data()->findInt64(kKeyTime, &lFrameTime);
         pDecShellContext->m_lastDecodedCTS = (M4_MediaTime)(lFrameTime/1000);
-        LOGV("VideoEditorVideoDecoder_decode,decoded frametime = %lf,size = %d",
+        ALOGV("VideoEditorVideoDecoder_decode,decoded frametime = %lf,size = %d",
             (M4_MediaTime)lFrameTime, pDecoderBuffer->size() );
 
-        // If bJump is false, we need to save every decoded buffer
-        if (!bJump) {
+        /*
+         * We need to save a buffer if bJump == false to a queue. These
+         * buffers have a timestamp >= the target time, *pTime (for instance,
+         * the transition between two videos, or a trimming postion inside
+         * one video), since they are part of the transition clip or the
+         * trimmed video.
+         *
+         * If *pTime does not have the same value as any of the existing
+         * video frames, we would like to get the buffer right before *pTime
+         * and in the transcoding phrase, this video frame will be encoded
+         * as a key frame and becomes the first video frame for the transition or the
+         * trimmed video to be generated. This buffer must also be queued.
+         *
+         */
+        int64_t targetTimeMs =
+                pDecShellContext->m_lastDecodedCTS +
+                pDecShellContext->mFrameIntervalMs +
+                tolerance;
+        if (!bJump || targetTimeMs > *pTime) {
             lerr = copyBufferToQueue(pDecShellContext, pDecoderBuffer);
             if (lerr != M4NO_ERROR) {
                 goto VIDEOEDITOR_VideoDecode_cleanUP;
             }
-        }
-    }
-
-    // If bJump is true, we only need to copy the last buffer
-    if (bJump) {
-        lerr = copyBufferToQueue(pDecShellContext, pDecoderBuffer);
-        if (lerr != M4NO_ERROR) {
-            goto VIDEOEDITOR_VideoDecode_cleanUP;
         }
     }
 
@@ -1455,7 +1467,7 @@ VIDEOEDITOR_VideoDecode_cleanUP:
         pDecoderBuffer = NULL;
     }
 
-    LOGV("VideoEditorVideoDecoder_decode: end with 0x%x", lerr);
+    ALOGV("VideoEditorVideoDecoder_decode: end with 0x%x", lerr);
     return lerr;
 }
 
@@ -1482,12 +1494,12 @@ static M4OSA_ERR copyBufferToQueue(
     // Color convert or copy from the given MediaBuffer to our buffer
     if (pDecShellContext->mI420ColorConverter) {
         if (pDecShellContext->mI420ColorConverter->convertDecoderOutputToI420(
-                    (uint8_t *)pDecoderBuffer->data() + pDecoderBuffer->range_offset(),   // decoderBits
-                    pDecShellContext->mGivenWidth,  // decoderWidth
-                    pDecShellContext->mGivenHeight,  // decoderHeight
-                    pDecShellContext->mCropRect,  // decoderRect
-                    tmpDecBuffer->pData /* dstBits */) < 0) {
-            LOGE("convertDecoderOutputToI420 failed");
+            (uint8_t *)pDecoderBuffer->data(),// ?? + pDecoderBuffer->range_offset(),   // decoderBits
+            pDecShellContext->mGivenWidth,  // decoderWidth
+            pDecShellContext->mGivenHeight,  // decoderHeight
+            pDecShellContext->mCropRect,  // decoderRect
+            tmpDecBuffer->pData /* dstBits */) < 0) {
+            ALOGE("convertDecoderOutputToI420 failed");
             lerr = M4ERR_NOT_IMPLEMENTED;
         }
     } else if (pDecShellContext->decOuputColorFormat == OMX_COLOR_FormatYUV420Planar) {
@@ -1542,12 +1554,8 @@ static M4OSA_ERR copyBufferToQueue(
             }
         }
     } else {
-        LOGE("VideoDecoder_decode: unexpected color format 0x%X",
-                pDecShellContext->decOuputColorFormat);
-        if (pDecoderBuffer != NULL) {
-            pDecoderBuffer->release();
-            pDecoderBuffer = NULL;
-        }
+        ALOGE("VideoDecoder_decode: unexpected color format 0x%X",
+            pDecShellContext->decOuputColorFormat);
         lerr = M4ERR_PARAMETER;
     }
 
@@ -1572,7 +1580,7 @@ M4OSA_ERR VideoEditorVideoDecoder_render(M4OSA_Context context,
     M4_MediaTime candidateTimeStamp = -1;
     M4OSA_Bool bFound = M4OSA_FALSE;
 
-    LOGV("VideoEditorVideoDecoder_render begin");
+    ALOGV("VideoEditorVideoDecoder_render begin");
     // Input parameters check
     VIDEOEDITOR_CHECK(M4OSA_NULL != context, M4ERR_PARAMETER);
     VIDEOEDITOR_CHECK(M4OSA_NULL != pTime, M4ERR_PARAMETER);
@@ -1581,11 +1589,11 @@ M4OSA_ERR VideoEditorVideoDecoder_render(M4OSA_Context context,
     // The output buffer is already allocated, just copy the data
     if ( (*pTime <= pDecShellContext->m_lastRenderCts) &&
             (M4OSA_FALSE == bForceRender) ) {
-        LOGV("VIDEOEDITOR_VIDEO_render Frame in the past");
+        ALOGV("VIDEOEDITOR_VIDEO_render Frame in the past");
         err = M4WAR_VIDEORENDERER_NO_NEW_FRAME;
         goto cleanUp;
     }
-    LOGV("VideoDecoder_render: lastRendered time = %lf,requested render time = "
+    ALOGV("VideoDecoder_render: lastRendered time = %lf,requested render time = "
         "%lf", pDecShellContext->m_lastRenderCts, *pTime);
 
     /**
@@ -1608,7 +1616,7 @@ M4OSA_ERR VideoEditorVideoDecoder_render(M4OSA_Context context,
                 bFound = M4OSA_TRUE;
                 pRenderVIDEOEDITORBuffer = pTmpVIDEOEDITORBuffer;
                 candidateTimeStamp = pTmpVIDEOEDITORBuffer->buffCTS;
-                LOGV("VideoDecoder_render: found a buffer with timestamp = %lf",
+                ALOGV("VideoDecoder_render: found a buffer with timestamp = %lf",
                     candidateTimeStamp);
             }
         }
@@ -1618,7 +1626,7 @@ M4OSA_ERR VideoEditorVideoDecoder_render(M4OSA_Context context,
         goto cleanUp;
     }
 
-    LOGV("VideoEditorVideoDecoder_render 3 ouput %d %d %d %d",
+    ALOGV("VideoEditorVideoDecoder_render 3 ouput %d %d %d %d",
         pOutputPlane[0].u_width, pOutputPlane[0].u_height,
         pOutputPlane[0].u_topleft, pOutputPlane[0].u_stride);
 
@@ -1648,7 +1656,7 @@ M4OSA_ERR VideoEditorVideoDecoder_render(M4OSA_Context context,
         tmpPlane[2].pac_data  = tmpPlane[1].pac_data +
             (tmpPlane[1].u_stride * tmpPlane[1].u_height);
 
-        LOGV("VideoEditorVideoDecoder_render w = %d H = %d",
+        ALOGV("VideoEditorVideoDecoder_render w = %d H = %d",
             tmpPlane[0].u_width,tmpPlane[0].u_height);
         pDecShellContext->m_pFilter(M4OSA_NULL, &tmpPlane[0], pOutputPlane);
     } else {
@@ -1679,11 +1687,11 @@ M4OSA_ERR VideoEditorVideoDecoder_render(M4OSA_Context context,
 cleanUp:
     if( M4NO_ERROR == err ) {
         *pTime = pDecShellContext->m_lastRenderCts;
-        LOGV("VideoEditorVideoDecoder_render no error");
+        ALOGV("VideoEditorVideoDecoder_render no error");
     } else {
-        LOGV("VideoEditorVideoDecoder_render ERROR 0x%X", err);
+        ALOGV("VideoEditorVideoDecoder_render ERROR 0x%X", err);
     }
-    LOGV("VideoEditorVideoDecoder_render end");
+    ALOGV("VideoEditorVideoDecoder_render end");
     return err;
 }
 

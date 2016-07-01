@@ -63,6 +63,7 @@ public:
                                                                 audio_devices_t device,
                                                                 const char *device_address);
     virtual status_t setPhoneState(audio_mode_t state);
+    virtual status_t setInCallPhoneState(audio_mode_t state);
     virtual status_t setForceUse(audio_policy_force_use_t usage, audio_policy_forced_cfg_t config);
     virtual audio_policy_forced_cfg_t getForceUse(audio_policy_force_use_t usage);
     virtual audio_io_handle_t getOutput(audio_stream_type_t stream,
@@ -138,9 +139,7 @@ public:
     virtual status_t startTone(audio_policy_tone_t tone, audio_stream_type_t stream);
     virtual status_t stopTone();
     virtual status_t setVoiceVolume(float volume, int delayMs = 0);
-#ifdef QCOM_FM_ENABLED
     virtual status_t setFmVolume(float volume, int delayMs = 0);
-#endif
 
 private:
                         AudioPolicyService();
@@ -165,9 +164,7 @@ private:
             SET_VOLUME,
             SET_PARAMETERS,
             SET_VOICE_VOLUME,
-#ifdef QCOM_FM_ENABLED
             SET_FM_VOLUME
-#endif
         };
 
         AudioCommandThread (String8 name);
@@ -188,9 +185,7 @@ private:
                     status_t    parametersCommand(audio_io_handle_t ioHandle,
                                             const char *keyValuePairs, int delayMs = 0);
                     status_t    voiceVolumeCommand(float volume, int delayMs = 0);
-#ifdef QCOM_FM_ENABLED
                     status_t    fmVolumeCommand(float volume, int delayMs = 0);
-#endif
                     void        insertCommand_l(AudioCommand *command, int delayMs = 0);
 
     private:
@@ -235,12 +230,10 @@ private:
             float mVolume;
         };
 
-#ifdef QCOM_FM_ENABLED
         class FmVolumeData {
         public:
             float mVolume;
         };
-#endif
 
         Mutex   mLock;
         Condition mWaitWorkCV;

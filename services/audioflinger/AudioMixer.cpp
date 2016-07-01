@@ -298,7 +298,7 @@ status_t AudioMixer::prepareTrackForDownmix(track_t* pTrack, int trackName)
 
         // Configure and enable downmixer
         status = (*pDbp->mDownmixHandle)->command(pDbp->mDownmixHandle,
-                EFFECT_CMD_CONFIGURE /*cmdCode*/, sizeof(effect_config_t) /*cmdSize*/,
+                EFFECT_CMD_SET_CONFIG /*cmdCode*/, sizeof(effect_config_t) /*cmdSize*/,
                 &pDbp->mDownmixConfig /*pCmdData*/,
                 &replySize /*replySize*/, &cmdStatus /*pReplyData*/);
         if ((status != 0) || (cmdStatus != 0)) {
@@ -549,11 +549,7 @@ bool AudioMixer::track_t::setResampler(uint32_t value, uint32_t devSampleRate)
                       (value == 48000 && devSampleRate == 44100))) {
                     quality = AudioResampler::LOW_QUALITY;
                 } else {
-#ifdef QCOM_ENHANCED_AUDIO
                     quality = AudioResampler::VERY_HIGH_QUALITY;
-#else
-                    quality = AudioResampler::DEFAULT_QUALITY;
-#endif
                 }
                 resampler = AudioResampler::create(
                         format,

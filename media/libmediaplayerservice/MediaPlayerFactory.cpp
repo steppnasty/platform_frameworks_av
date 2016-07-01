@@ -343,7 +343,9 @@ void MediaPlayerFactory::registerBuiltinFactories() {
     typedef MediaPlayerFactory::IFactory* (*CreateDASHDriverFn)();
 
     pFactoryLib = ::dlopen(FACTORY_LIB, RTLD_LAZY);
-    if (pFactoryLib != NULL) {
+    if (pFactoryLib == NULL) {
+        ALOGE("Failed to open FACTORY_LIB Error : %s ",::dlerror());
+    } else {
         CreateDASHDriverFn pCreateFnPtr;
         pCreateFnPtr = (CreateDASHDriverFn) dlsym(pFactoryLib, FACTORY_CREATE_FN);
         if (pCreateFnPtr == NULL) {

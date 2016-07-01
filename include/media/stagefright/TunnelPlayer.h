@@ -78,6 +78,7 @@ public:
 
 
     static int mTunnelObjectsAlive;
+    static const int getTunnelObjectsAliveMax();
 private:
     int64_t mPositionTimeMediaUs;
     int64_t mPositionTimeRealUs;
@@ -130,14 +131,13 @@ private:
     //Thread alive boolean
     bool extractorThreadAlive;
 
-
     //Declare the condition Variables and Mutex
-
-    Condition mExtractorCV;
+    Mutex mExtractorMutex;
+    Condition mExtractorCv;
 
 
     // make sure Decoder thread has exited
-    void requestAndWaitForExtractorThreadExit();
+    void requestAndWaitForExtractorThreadExit_l();
 
 
     static void *extractorThreadWrapper(void *me);
@@ -197,18 +197,8 @@ private:
     sp<TimedEventQueue::Event>  mPauseEvent;
     bool                        mPauseEventPending;
 
-    typedef enum {
-      NCREATED = -1,
-      INITIALIZED,
-      RUNNING,
-      SLEEPING,
-      EXITING,
-    } ThreadState;
-
     sp<MediaPlayerBase::AudioSink> mAudioSink;
     AwesomePlayer *mObserver;
-    ThreadState mThreadState;
-    bool mStopSinkPending;
 
     static size_t AudioSinkCallback(
         MediaPlayerBase::AudioSink *audioSink,
@@ -227,8 +217,7 @@ private:
     size_t fillBuffer(void *data, size_t size);
 
     void reset();
-    status_t schedPauseTimeOut();
-    status_t stopAudioSink();
+    bool seekTooClose(int64_t time_us);
 
     TunnelPlayer(const TunnelPlayer &);
     TunnelPlayer &operator=(const TunnelPlayer &);

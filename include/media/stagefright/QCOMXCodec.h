@@ -94,9 +94,9 @@ struct QCOMXCodec {
     static void     setQCSpecificVideoFormat(const sp<MetaData> &meta, sp<IOMX> OMXhandle,
                                                IOMX::node_id nodeID, char* componentName );
 
-    static void     checkIfInterlaced(const uint8_t *ptr, const sp<MetaData> &meta);
+    static status_t enableSmoothStreaming(const sp<IOMX> &omx, IOMX::node_id nodeID);
 
-    static bool     useHWAACDecoder(const char *mime);
+    static bool     checkIfInterlaced(const uint8_t *ptr, const sp<MetaData> &meta);
 
 };
 

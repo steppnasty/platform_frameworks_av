@@ -106,7 +106,6 @@ private:
     AudioSource(const AudioSource &);
     AudioSource &operator=(const AudioSource &);
 
-#ifdef QCOM_HARDWARE
     //additions for tunnel source
 public:
     AudioSource(
@@ -117,7 +116,6 @@ private:
     String8 mMime;
     int32_t mMaxBufferSize;
     int64_t bufferDurationUs( ssize_t n );
-#endif
 };
 
 }  // namespace android

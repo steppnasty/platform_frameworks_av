@@ -32,9 +32,9 @@ LOCAL_SRC_FILES:=          \
 LOCAL_MODULE_TAGS := optional
 
 LOCAL_SHARED_LIBRARIES := \
-    libcutils \
-    libutils \
-    libvideoeditor_osal \
+    libcutils             \
+    libutils              \
+    libvideoeditor_osal   \
 
 LOCAL_C_INCLUDES += \
     $(TOP)/frameworks/av/libvideoeditor/osal/inc \

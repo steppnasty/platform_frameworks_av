@@ -18,6 +18,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
+    MediaBufferPuller.cpp \
     VideoEditorVideoDecoder.cpp \
     VideoEditorAudioDecoder.cpp \
     VideoEditorMp3Reader.cpp \
@@ -28,43 +29,33 @@ LOCAL_SRC_FILES:= \
     VideoEditorAudioEncoder.cpp
 
 LOCAL_C_INCLUDES += \
-    $(TOP)/frameworks/base/core/jni \
-    $(TOP)/frameworks/base/include \
-    $(TOP)/frameworks/av/include/media \
     $(TOP)/frameworks/av/media/libmediaplayerservice \
     $(TOP)/frameworks/av/media/libstagefright \
     $(TOP)/frameworks/av/media/libstagefright/include \
     $(TOP)/frameworks/av/media/libstagefright/rtsp \
-    $(JNI_H_INCLUDE) \
     $(call include-path-for, corecg graphics) \
-    $(TOP)/frameworks/native/include/media/openmax \
-    $(TOP)/frameworks/base/core/jni/mediaeditor \
+    $(TOP)/frameworks/av/libvideoeditor/lvpp \
+    $(TOP)/frameworks/av/libvideoeditor/osal/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/common/inc \
     $(TOP)/frameworks/av/libvideoeditor/vss/mcs/inc \
-    $(TOP)/frameworks/av/libvideoeditor/lvpp \
-    $(TOP)/frameworks/av/libvideoeditor/osal/inc \
-    $(TOP)/frameworks/av/libvideoeditor/include \
     $(TOP)/frameworks/av/libvideoeditor/vss/stagefrightshells/inc \
-    $(TOP)/vendor/qcom/opensource/omx/mm-core/inc
+    $(TOP)/frameworks/native/include/media/editor \
+    $(TOP)/frameworks/native/include/media/openmax
 
-LOCAL_SHARED_LIBRARIES := \
-    libcutils \
-    libutils \
-    libandroid_runtime \
-    libnativehelper \
-    libmedia \
-    libbinder \
-    libstagefright \
-    libstagefright_omx \
-    libgui \
-    libvideoeditorplayer \
-    libvideoeditor_osal \
-    libdl
+LOCAL_SHARED_LIBRARIES :=     \
+    libcutils                 \
+    libutils                  \
+    libmedia                  \
+    libbinder                 \
+    libstagefright            \
+    libstagefright_foundation \
+    libstagefright_omx        \
+    libgui                    \
+    libvideoeditor_osal       \
+    libvideoeditorplayer      \
 
 LOCAL_CFLAGS += \
-
-
 
 LOCAL_STATIC_LIBRARIES := \
     libstagefright_color_conversion

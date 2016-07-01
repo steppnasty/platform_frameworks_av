@@ -41,7 +41,6 @@ static codeProfileLevel mpeg4ProfileLevelTable[] = {
     {0x03, OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level3},
     {0x04, OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level4a},
     {0x05, OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level5},
-    {0x06, OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level5},
     {0x08, OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level0},
     {0x11, OMX_VIDEO_MPEG4ProfileSimpleScalable,OMX_VIDEO_MPEG4Level1},
     {0x12, OMX_VIDEO_MPEG4ProfileSimpleScalable,OMX_VIDEO_MPEG4Level2},
@@ -499,14 +498,14 @@ M4OSA_ERR getAVCProfileAndLevel(M4OSA_UInt8* pDSI, M4OSA_Int32 DSISize,
     }
 
     if ((DSISize <= index) || (pDSI == M4OSA_NULL)) {
-        LOGE("getAVCProfileAndLevel: DSI is invalid");
+        ALOGE("getAVCProfileAndLevel: DSI is invalid");
         *pProfile = M4VIDEOEDITING_VIDEO_UNKNOWN_PROFILE;
         *pLevel = M4VIDEOEDITING_VIDEO_UNKNOWN_LEVEL;
         return M4ERR_PARAMETER;
     }
 
     constraintSet3 = (pDSI[index+2] & 0x10);
-    LOGV("getAVCProfileAndLevel profile_byte %d, level_byte: %d constrain3flag",
+    ALOGV("getAVCProfileAndLevel profile_byte %d, level_byte: %d constrain3flag",
           pDSI[index+1], pDSI[index+3], constraintSet3);
 
     switch (pDSI[index+1]) {
@@ -587,7 +586,7 @@ M4OSA_ERR getAVCProfileAndLevel(M4OSA_UInt8* pDSI, M4OSA_Int32 DSISize,
         default:
             *pLevel = M4VIDEOEDITING_VIDEO_UNKNOWN_LEVEL;
     }
-    LOGV("getAVCProfileAndLevel profile %ld level %ld", *pProfile, *pLevel);
+    ALOGV("getAVCProfileAndLevel profile %ld level %ld", *pProfile, *pLevel);
     return M4NO_ERROR;
 }
 
@@ -597,17 +596,17 @@ M4OSA_ERR getH263ProfileAndLevel(M4OSA_UInt8* pDSI, M4OSA_Int32 DSISize,
     M4OSA_UInt16 index = 7; /* the 5th and 6th bytes contain the level and profile */
 
     if ((pProfile == M4OSA_NULL) || (pLevel == M4OSA_NULL)) {
-        LOGE("getH263ProfileAndLevel invalid pointer for pProfile");
+        ALOGE("getH263ProfileAndLevel invalid pointer for pProfile");
         return M4ERR_PARAMETER;
     }
 
     if ((DSISize < index) || (pDSI == M4OSA_NULL)) {
-        LOGE("getH263ProfileAndLevel: DSI is invalid");
+        ALOGE("getH263ProfileAndLevel: DSI is invalid");
         *pProfile = M4VIDEOEDITING_VIDEO_UNKNOWN_PROFILE;
         *pLevel = M4VIDEOEDITING_VIDEO_UNKNOWN_LEVEL;
         return M4ERR_PARAMETER;
     }
-    LOGV("getH263ProfileAndLevel profile_byte %d, level_byte",
+    ALOGV("getH263ProfileAndLevel profile_byte %d, level_byte",
           pDSI[6], pDSI[5]);
     /* get the H263 level */
     switch (pDSI[5]) {
@@ -671,7 +670,7 @@ M4OSA_ERR getH263ProfileAndLevel(M4OSA_UInt8* pDSI, M4OSA_Int32 DSISize,
         default:
            *pProfile = M4VIDEOEDITING_VIDEO_UNKNOWN_PROFILE;
     }
-    LOGV("getH263ProfileAndLevel profile %ld level %ld", *pProfile, *pLevel);
+    ALOGV("getH263ProfileAndLevel profile %ld level %ld", *pProfile, *pLevel);
     return M4NO_ERROR;
 }
 
@@ -683,7 +682,7 @@ M4OSA_ERR getMPEG4ProfileAndLevel(M4OSA_UInt8 profileAndLevel,
     if ((pProfile == M4OSA_NULL) || (pLevel == M4OSA_NULL)) {
         return M4ERR_PARAMETER;
     }
-    LOGV("getMPEG4ProfileAndLevel profileAndLevel %d", profileAndLevel);
+    ALOGV("getMPEG4ProfileAndLevel profileAndLevel %d", profileAndLevel);
     length = sizeof(mpeg4ProfileLevelTable) /sizeof(mpeg4ProfileLevelTable[0]);
     *pProfile = M4VIDEOEDITING_VIDEO_UNKNOWN_PROFILE;
     *pLevel = M4VIDEOEDITING_VIDEO_UNKNOWN_LEVEL;
@@ -694,6 +693,6 @@ M4OSA_ERR getMPEG4ProfileAndLevel(M4OSA_UInt8 profileAndLevel,
             break;
         }
     }
-    LOGV("getMPEG4ProfileAndLevel profile %ld level %ld", *pProfile, *pLevel);
+    ALOGV("getMPEG4ProfileAndLevel profile %ld level %ld", *pProfile, *pLevel);
     return M4NO_ERROR;
 }

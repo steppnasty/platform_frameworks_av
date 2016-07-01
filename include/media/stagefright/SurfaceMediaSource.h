@@ -52,6 +52,8 @@ class GraphicBuffer;
 // may be dropped.  It is possible to wait for the buffers to be
 // returned (but not implemented)
 
+#define DEBUG_PENDING_BUFFERS   0
+
 class SurfaceMediaSource : public MediaSource,
                                 public MediaBufferObserver,
                                 protected BufferQueue::ConsumerListener {
@@ -73,15 +75,10 @@ public:
 
     // For the MediaSource interface for use by StageFrightRecorder:
     virtual status_t start(MetaData *params = NULL);
-
-    virtual status_t stop() { return reset(); }
-    virtual status_t read(
-            MediaBuffer **buffer, const ReadOptions *options = NULL);
+    virtual status_t stop();
+    virtual status_t read(MediaBuffer **buffer,
+            const ReadOptions *options = NULL);
     virtual sp<MetaData> getFormat();
-
-    // Pass the metadata over to the buffer, call when you have the lock
-    void passMetadataBufferLocked(MediaBuffer **buffer);
-    bool checkBufferMatchesSlot(int slot, MediaBuffer *buffer);
 
     // Get / Set the frame rate used for encoding. Default fps = 30
     status_t setFrameRate(int32_t fps) ;
@@ -105,9 +102,6 @@ public:
     // when a new frame becomes available.
     void setFrameAvailableListener(const sp<FrameAvailableListener>& listener);
 
-    // getCurrentBuffer returns the buffer associated with the current image.
-    sp<GraphicBuffer> getCurrentBuffer() const;
-
     // dump our state in a String
     void dump(String8& result) const;
     void dump(String8& result, const char* prefix, char* buffer,
@@ -118,6 +112,12 @@ public:
     bool isMetaDataStoredInVideoBuffers() const;
 
     sp<BufferQueue> getBufferQueue() const { return mBufferQueue; }
+
+    // To be called before start()
+    status_t setMaxAcquiredBufferCount(size_t count);
+
+    // To be called before start()
+    status_t setUseAbsoluteTimestamps();
 
 protected:
 
@@ -165,11 +165,18 @@ private:
     // reset mCurrentTexture to INVALID_BUFFER_SLOT.
     int mCurrentSlot;
 
-    // mCurrentBuf is the graphic buffer of the current slot to be used by
-    // buffer consumer. It's possible that this buffer is not associated
-    // with any buffer slot, so we must track it separately in order to
-    // properly use IGraphicBufferAlloc::freeAllGraphicBuffersExcept.
-    sp<GraphicBuffer> mCurrentBuf;
+    // mCurrentBuffers is a list of the graphic buffers that are being used by
+    // buffer consumer (i.e. the video encoder). It's possible that these
+    // buffers are not associated with any buffer slots, so we must track them
+    // separately.  Buffers are added to this list in read, and removed from
+    // this list in signalBufferReturned
+    Vector<sp<GraphicBuffer> > mCurrentBuffers;
+
+    size_t mNumPendingBuffers;
+
+#if DEBUG_PENDING_BUFFERS
+    Vector<MediaBuffer *> mPendingBuffers;
+#endif
 
     // mCurrentTimestamp is the timestamp for the current texture. It
     // gets set to mLastQueuedTimestamp each time updateTexImage is called.
@@ -189,8 +196,8 @@ private:
     // Set to a default of 30 fps if not specified by the client side
     int32_t mFrameRate;
 
-    // mStopped is a flag to check if the recording is going on
-    bool mStopped;
+    // mStarted is a flag to check if the recording is going on
+    bool mStarted;
 
     // mNumFramesReceived indicates the number of frames recieved from
     // the client side
@@ -206,11 +213,15 @@ private:
     // offset timestamps.
     int64_t mStartTimeNs;
 
+    size_t mMaxAcquiredBufferCount;
+
+    bool mUseAbsoluteTimestamps;
+
     // mFrameAvailableCondition condition used to indicate whether there
     // is a frame available for dequeuing
     Condition mFrameAvailableCondition;
 
-    status_t reset();
+    Condition mMediaBuffersAvailableCondition;
 
     // Avoid copying and equating and default constructor
     DISALLOW_IMPLICIT_CONSTRUCTORS(SurfaceMediaSource);

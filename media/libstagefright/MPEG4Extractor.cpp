@@ -12,6 +12,25 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * This file was modified by Dolby Laboratories, Inc. The portions of the
+ * code that are surrounded by "DOLBY..." are copyrighted and
+ * licensed separately, as follows:
+ *
+ *  (C) 2011-2012 Dolby Laboratories, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
  */
 
 //#define LOG_NDEBUG 0
@@ -40,10 +59,9 @@
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
 #include <utils/String8.h>
-#ifdef QCOM_HARDWARE
 #include <QCMediaDefs.h>
 #include <QCMetaData.h>
-#endif
+#include "include/QCUtilityClass.h"
 
 namespace android {
 
@@ -133,6 +151,11 @@ MPEG4DataSource::MPEG4DataSource(const sp<DataSource> &source)
       mCachedOffset(0),
       mCachedSize(0),
       mCache(NULL) {
+      #ifdef DOLBY_UDC
+      #if defined (DEBUG_LOG_DDP_DECODER_EXTRA)
+      ALOGE("@DDP MPEG4DataSource::MPEG4DataSource");
+      #endif
+      #endif //DOLBY_UDC
 }
 
 MPEG4DataSource::~MPEG4DataSource() {
@@ -240,6 +263,11 @@ static void hexdump(const void *_data, size_t size) {
 }
 
 static const char *FourCC2MIME(uint32_t fourcc) {
+    #ifdef DOLBY_UDC
+    #if defined (DEBUG_LOG_DDP_DECODER_EXTRA)
+    ALOGE("@DDP FourCC2MIME");
+    #endif
+    #endif //DOLBY_UDC
     switch (fourcc) {
         case FOURCC('m', 'p', '4', 'a'):
             return MEDIA_MIMETYPE_AUDIO_AAC;
@@ -264,7 +292,6 @@ static const char *FourCC2MIME(uint32_t fourcc) {
         case FOURCC('a', 'v', 'c', '1'):
             return MEDIA_MIMETYPE_VIDEO_AVC;
 
-#ifdef QCOM_HARDWARE
         case FOURCC('s', 'q', 'c', 'p'):
             return MEDIA_MIMETYPE_AUDIO_QCELP;
 
@@ -284,10 +311,14 @@ static const char *FourCC2MIME(uint32_t fourcc) {
 
         case FOURCC('e', 'c', '-', '3'):
             return MEDIA_MIMETYPE_AUDIO_EAC3;
-#endif
 
         default:
             CHECK(!"should not be here.");
+            #ifdef DOLBY_UDC
+            #if defined (DEBUG_LOG_DDP_DECODER_EXTRA)
+            ALOGE("@DDP FourCC2Mime default (not found)");
+            #endif
+            #endif //DOLBY_UDC
             return NULL;
     }
 }
@@ -301,6 +332,11 @@ MPEG4Extractor::MPEG4Extractor(const sp<DataSource> &source)
       mFileMetaData(new MetaData),
       mFirstSINF(NULL),
       mIsDrm(false) {
+      #ifdef DOLBY_UDC
+      #if defined (DEBUG_LOG_DDP_DECODER_EXTRA)
+      ALOGE("@DDP MPEG4Extractor::MPEG4Extractor");
+      #endif
+      #endif //DOLBY_UDC
 }
 
 MPEG4Extractor::~MPEG4Extractor() {
@@ -377,14 +413,14 @@ sp<MetaData> MPEG4Extractor::getTrackMetaData(
         CHECK(track->meta->findCString(kKeyMIMEType, &mime));
         if (!strncasecmp("video/", mime, 6)) {
             uint32_t sampleIndex;
-            uint32_t sampleTime;
+            uint64_t sampleTime;
             if (track->sampleTable->findThumbnailSample(&sampleIndex) == OK
                     && track->sampleTable->getMetaDataForSample(
                         sampleIndex, NULL /* offset */, NULL /* size */,
                         &sampleTime) == OK) {
                 track->meta->setInt64(
                         kKeyThumbnailTime,
-                        ((int64_t)sampleTime * 1000000) / track->timescale);
+                        (sampleTime * 1000000) / track->timescale);
             }
         }
     }
@@ -948,10 +984,9 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
         }
 
         case FOURCC('m', 'p', '4', 'a'):
+        case FOURCC('.', 'm', 'p', '3'):
         case FOURCC('s', 'a', 'm', 'r'):
         case FOURCC('s', 'a', 'w', 'b'):
-#ifdef QCOM_HARDWARE
-        case FOURCC('.', 'm', 'p', '3'):
         case FOURCC('s', 'e', 'v', 'c'):
         case FOURCC('s', 'q', 'c', 'p'):
         case FOURCC('d', 't', 's', 'c'):
@@ -960,7 +995,6 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
         case FOURCC('d', 't', 's', 'e'):
         case FOURCC('a', 'c', '-', '3'):
         case FOURCC('e', 'c', '-', '3'):
-#endif
         {
             uint8_t buffer[8 + 20];
             if (chunk_data_size < (ssize_t)sizeof(buffer)) {
@@ -990,6 +1024,11 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
                 num_channels = 1;
                 sample_rate = 16000;
             }
+            #ifdef DOLBY_UDC
+            #if defined (DEBUG_LOG_DDP_DECODER_EXTRA)
+            ALOGE("@DDP FourCC:'%s'", FourCC2MIME(chunk_type));
+            #endif
+            #endif //DOLBY_UDC
 
 #if 0
             printf("*** coding='%s' %d channels, size %d, rate %d\n",
@@ -1001,16 +1040,14 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             mLastTrack->meta->setInt32(kKeySampleRate, sample_rate);
 
             off64_t stop_offset = *offset + chunk_size;
-#ifdef QCOM_HARDWARE
             if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_MPEG, FourCC2MIME(chunk_type)) ||
                 !strcasecmp(MEDIA_MIMETYPE_AUDIO_AMR_WB, FourCC2MIME(chunk_type))) {
                 // ESD is not required in mp3
                 // amr wb with damr atom corrupted can cause the clip to not play
                *offset = stop_offset;
-            } else
-#endif
+            } else {
                *offset = data_offset + sizeof(buffer);
-
+            }
             while (*offset < stop_offset) {
                 status_t err = parseChunk(offset, depth + 1);
                 if (err != OK) {
@@ -1268,7 +1305,6 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             break;
         }
 
-#ifdef QCOM_HARDWARE
         case FOURCC('d', 'd', 't', 's'):
         case FOURCC('d', 'a', 'c', '3'):
         case FOURCC('d', 'e', 'c', '3'):
@@ -1278,7 +1314,6 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             *offset += chunk_size;
             break;
         }
-#endif
 
         case FOURCC('a', 'v', 'c', 'C'):
         {
@@ -1860,14 +1895,11 @@ status_t MPEG4Extractor::updateAudioTrackInfoFromESDS_MPEG4Audio(
         return ERROR_MALFORMED;
     }
 
-#ifdef QCOM_HARDWARE
     if (objectTypeIndication == 0xA0) {
         // This isn't MPEG4 audio at all, it's EVRC
        mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_EVRC);
        return OK;
     }
-#endif
-
     if (objectTypeIndication == 0xe1) {
         // This isn't MPEG4 audio at all, it's QCELP 14k...
         mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_QCELP);
@@ -1911,6 +1943,8 @@ status_t MPEG4Extractor::updateAudioTrackInfoFromESDS_MPEG4Audio(
 
     if (objectType == 31) {  // AAC-ELD => additional 6 bits
         objectType = 32 + br.getBits(6);
+        ALOGV("Add temporary exception information for Tunnel Decode");
+        mLastTrack->meta->setInt32(kKeyTunnelException, 1);
     }
 
     uint32_t freqIndex = br.getBits(4);
@@ -1983,6 +2017,11 @@ MPEG4Source::MPEG4Source(
       mBuffer(NULL),
       mWantsNALFragments(false),
       mSrcBuffer(NULL) {
+      #ifdef DOLBY_UDC
+      #if defined (DEBUG_LOG_DDP_DECODER_EXTRA)
+      ALOGE("@DDP MPEG4Source::MPEG4Source");
+      #endif
+      #endif //DOLBY_UDC
     const char *mime;
     bool success = mFormat->findCString(kKeyMIMEType, &mime);
     CHECK(success);
@@ -2003,12 +2042,9 @@ MPEG4Source::MPEG4Source(
         // The number of bytes used to encode the length of a NAL unit.
         mNALLengthSize = 1 + (ptr[4] & 3);
     }
-
-#ifdef QCOM_HARDWARE
     //MPEG4 extractor can give complete frames,
     //set arbitrary mode to false
     mFormat->setInt32(kKeyUseArbitraryMode, 0);
-#endif
 }
 
 MPEG4Source::~MPEG4Source() {
@@ -2139,7 +2175,7 @@ status_t MPEG4Source::read(
                     sampleIndex, &syncSampleIndex, findFlags);
         }
 
-        uint32_t sampleTime;
+        uint64_t sampleTime;
         if (err == OK) {
             err = mSampleTable->getMetaDataForSample(
                     sampleIndex, NULL, NULL, &sampleTime);
@@ -2162,7 +2198,7 @@ status_t MPEG4Source::read(
         }
 
 #if 0
-        uint32_t syncSampleTime;
+        uint64_t syncSampleTime;
         CHECK_EQ(OK, mSampleTable->getMetaDataForSample(
                     syncSampleIndex, NULL, NULL, &syncSampleTime));
 
@@ -2184,7 +2220,7 @@ status_t MPEG4Source::read(
 
     off64_t offset;
     size_t size;
-    uint32_t cts;
+    uint64_t cts;
     bool isSyncSample;
     bool newBuffer = false;
     if (mBuffer == NULL) {
@@ -2217,12 +2253,13 @@ status_t MPEG4Source::read(
 
                 return ERROR_IO;
             }
-
+            //for AC3/EAC3 detection
+            QCUtilityClass::helper_mpeg4extractor_checkAC3EAC3(mBuffer, mFormat, size);
             CHECK(mBuffer != NULL);
             mBuffer->set_range(0, size);
             mBuffer->meta_data()->clear();
             mBuffer->meta_data()->setInt64(
-                    kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
+                    kKeyTime, (cts * 1000000) / mTimescale);
 
             if (targetSampleTimeUs >= 0) {
                 mBuffer->meta_data()->setInt64(
@@ -2344,7 +2381,7 @@ status_t MPEG4Source::read(
 
         mBuffer->meta_data()->clear();
         mBuffer->meta_data()->setInt64(
-                kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
+                kKeyTime, (cts * 1000000) / mTimescale);
 
         if (targetSampleTimeUs >= 0) {
             mBuffer->meta_data()->setInt64(
@@ -2387,10 +2424,8 @@ static bool LegacySniffMPEG4(
         return false;
     }
 
-    if (!memcmp(header, "ftyp3gp", 7) || !memcmp(header, "ftypmp42", 8)
-#ifdef QCOM_HARDWARE
-        || !memcmp(header, "ftyp3g2a", 8) || !memcmp(header, "ftyp3g2b", 8) || !memcmp(header, "ftyp3g2c", 8)
-#endif
+    if (!memcmp(header, "ftyp3g2a", 8) || !memcmp(header, "ftyp3g2b", 8) || !memcmp(header, "ftyp3g2c", 8)
+        || !memcmp(header, "ftyp3gp", 7) || !memcmp(header, "ftypmp42", 8)
         || !memcmp(header, "ftyp3gr6", 8) || !memcmp(header, "ftyp3gs6", 8)
         || !memcmp(header, "ftyp3ge6", 8) || !memcmp(header, "ftyp3gg6", 8)
         || !memcmp(header, "ftypisom", 8) || !memcmp(header, "ftypM4V ", 8)

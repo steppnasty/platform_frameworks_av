@@ -28,10 +28,8 @@
 #include <utils/RefBase.h>
 #include <utils/Errors.h>
 #include <binder/IInterface.h>
-#ifdef QCOM_HARDWARE
 #include <media/IDirectTrack.h>
 #include <media/IDirectTrackClient.h>
-#endif
 #include <media/IAudioTrack.h>
 #include <media/IAudioRecord.h>
 #include <media/IAudioFlingerClient.h>
@@ -77,7 +75,6 @@ public:
                                 int *sessionId,
                                 status_t *status) = 0;
 
-#ifdef QCOM_HARDWARE
     /* create a direct audio track and registers it with AudioFlinger.
      * return null if the track cannot be created.
      */
@@ -90,7 +87,6 @@ public:
                                 IDirectTrackClient* client,
                                 audio_stream_type_t streamType,
                                 status_t *status) = 0;
-#endif
 
     virtual sp<IAudioRecord> openRecord(
                                 pid_t pid,
@@ -210,18 +206,13 @@ public:
                                     audio_io_handle_t dstOutput) = 0;
 
     virtual audio_module_handle_t loadHwModule(const char *name) = 0;
-#ifdef QCOM_HARDWARE
-    virtual status_t deregisterClient(const sp<IAudioFlingerClient>& client) { return false; };
-#endif
 
     // helpers for android.media.AudioManager.getProperty(), see description there for meaning
     // FIXME move these APIs to AudioPolicy to permit a more accurate implementation
     // that looks on primary device for a stream with fast flag, primary flag, or first one.
     virtual int32_t getPrimaryOutputSamplingRate() = 0;
     virtual int32_t getPrimaryOutputFrameCount() = 0;
-#ifdef QCOM_FM_ENABLED
     virtual status_t setFmVolume(float volume) = 0;
-#endif
 
 };
 

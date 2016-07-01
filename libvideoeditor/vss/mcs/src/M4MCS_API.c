@@ -1337,21 +1337,8 @@ M4OSA_ERR H264MCS_ProcessSPS_PPS( NSWAVC_MCS_t *instance, M4OSA_UInt8 *inbuff,
     M4OSA_DEBUG_IF2((M4OSA_NULL == instance), M4ERR_PARAMETER,
         "H264MCS_ProcessSPS_PPS: instance is M4OSA_NULL");
 
-    switch( instance->m_pDecoderSpecificInfo[4] & 0x3 )
-    {
-        case 0:
-            instance->m_Num_Bytes_NALUnitLength = 1;
-            break;
-
-        case 1:
-            instance->m_Num_Bytes_NALUnitLength = 2;
-            break;
-
-        case 3:
-            //Note: Current code supports only this...
-            instance->m_Num_Bytes_NALUnitLength = 4;
-            break;
-    }
+    instance->m_Num_Bytes_NALUnitLength =
+            (instance->m_pDecoderSpecificInfo[4] & 0x03) + 1;
 
     instance->m_encoder_SPS_Cnt = instance->m_pDecoderSpecificInfo[5] & 0x1F;
 
@@ -1426,6 +1413,12 @@ M4OSA_ERR H264MCS_ProcessSPS_PPS( NSWAVC_MCS_t *instance, M4OSA_UInt8 *inbuff,
                 p_bs->Buffer = p_bs->Buffer + 5;
 
                 break;
+        }
+
+        if (nal_size == 0) {
+            M4OSA_TRACE1_1("0 size nal unit at line %d", __LINE__);
+            frame_size += instance->m_Num_Bytes_NALUnitLength;
+            continue;
         }
 
         p_bs->bitPos = 0;
@@ -5861,7 +5854,6 @@ static M4OSA_ERR M4MCS_intPrepareVideoEncoder( M4MCS_InternalContext *pC )
     /**
      * Limit the video bitrate according to encoder profile
      * and level */
-    /*
     err = M4MCS_intLimitBitratePerCodecProfileLevel(&EncParams);
     if (M4NO_ERROR != err) {
         M4OSA_TRACE1_1(
@@ -5869,7 +5861,7 @@ static M4OSA_ERR M4MCS_intPrepareVideoEncoder( M4MCS_InternalContext *pC )
              0x%x", err);
         return err;
     }
-    */
+
     /**
     * Create video encoder */
     err = pC->pVideoEncoderGlobalFcts->pFctInit(&pC->pViEncCtxt,
@@ -8867,7 +8859,7 @@ static M4OSA_ERR M4MCS_intVideoNullEncoding( M4MCS_InternalContext *pC )
     }
 
 
-    if ((pC->EncodingVideoFormat = M4ENCODER_kNULL)
+    if ((pC->EncodingVideoFormat == M4ENCODER_kNULL)
         && (pC->bLastDecodedFrameCTS == M4OSA_FALSE)
         && (pC->uiBeginCutTime > 0)) {
 

@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+//#define LOG_NDEBUG 0
+#define LOG_TAG "sf2"
+#include <utils/Log.h>
+
 #include <binder/ProcessState.h>
 
 #include <media/stagefright/foundation/hexdump.h>
@@ -32,7 +36,6 @@
 #include <media/stagefright/NativeWindowWrapper.h>
 #include <media/stagefright/Utils.h>
 
-#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
 
 #include "include/ESDS.h"
@@ -173,8 +176,9 @@ protected:
                     }
 
                     onDrainThisBuffer(msg);
-                } else if (what == ACodec::kWhatEOS) {
-                    printf("$\n");
+                } else if (what == ACodec::kWhatEOS
+                        || what == ACodec::kWhatError) {
+                    printf((what == ACodec::kWhatEOS) ? "$\n" : "E\n");
 
                     int64_t delayUs = ALooper::GetNowUs() - mStartTimeUs;
 
@@ -198,9 +202,7 @@ protected:
 
                     (new AMessage(kWhatSeek, id()))->post(5000000ll);
                 } else if (what == ACodec::kWhatOutputFormatChanged) {
-                } else {
-                    CHECK_EQ(what, (int32_t)ACodec::kWhatShutdownCompleted);
-
+                } else if (what == ACodec::kWhatShutdownCompleted) {
                     mDecodeLooper->unregisterHandler(mCodec->id());
 
                     if (mDecodeLooper != looper()) {
@@ -208,6 +210,12 @@ protected:
                     }
 
                     looper()->stop();
+                } else if (what == ACodec::kWhatError) {
+                    ALOGE("something went wrong, codec reported an error.");
+
+                    printf("E\n");
+
+                    (new AMessage(kWhatStop, id()))->post();
                 }
                 break;
             }
@@ -279,6 +287,11 @@ private:
 
             msg->setInt32("channel-count", numChannels);
             msg->setInt32("sample-rate", sampleRate);
+
+            int32_t isADTS;
+            if (meta->findInt32(kKeyIsADTS, &isADTS) && isADTS != 0) {
+                msg->setInt32("is-adts", true);
+            }
         }
 
         uint32_t type;
@@ -360,7 +373,7 @@ private:
             buffer->meta()->setInt32("csd", true);
             mCSD.push(buffer);
 
-            msg->setObject("csd", buffer);
+            msg->setBuffer("csd", buffer);
         } else if (meta->findData(kKeyESDS, &type, &data, &size)) {
             ESDS esds((const char *)data, size);
             CHECK_EQ(esds.InitCheck(), (status_t)OK);
@@ -405,14 +418,14 @@ private:
         sp<AMessage> reply;
         CHECK(msg->findMessage("reply", &reply));
 
-        if (mSeekState == SEEK_FLUSHING) {
+        if (mSource == NULL || mSeekState == SEEK_FLUSHING) {
+            reply->setInt32("err", ERROR_END_OF_STREAM);
             reply->post();
             return;
         }
 
-        sp<RefBase> obj;
-        CHECK(msg->findObject("buffer", &obj));
-        sp<ABuffer> outBuffer = static_cast<ABuffer *>(obj.get());
+        sp<ABuffer> outBuffer;
+        CHECK(msg->findBuffer("buffer", &outBuffer));
 
         if (mCSDIndex < mCSD.size()) {
             outBuffer = mCSD.editItemAt(mCSDIndex++);
@@ -511,15 +524,14 @@ private:
             }
         }
 
-        reply->setObject("buffer", outBuffer);
+        reply->setBuffer("buffer", outBuffer);
         reply->post();
     }
 
     void onDrainThisBuffer(const sp<AMessage> &msg) {
-        sp<RefBase> obj;
-        CHECK(msg->findObject("buffer", &obj));
+        sp<ABuffer> buffer;
+        CHECK(msg->findBuffer("buffer", &buffer));
 
-        sp<ABuffer> buffer = static_cast<ABuffer *>(obj.get());
         mTotalBytesReceived += buffer->size();
 
         sp<AMessage> reply;

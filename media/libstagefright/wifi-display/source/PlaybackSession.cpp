@@ -738,6 +738,8 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
 status_t WifiDisplaySource::PlaybackSession::addVideoSource() {
     sp<SurfaceMediaSource> source = new SurfaceMediaSource(width(), height());
 
+    source->setUseAbsoluteTimestamps();
+
 #if 1
     sp<RepeaterSource> videoSource =
         new RepeaterSource(source, 30.0 /* rateHz */);
@@ -759,7 +761,10 @@ status_t WifiDisplaySource::PlaybackSession::addVideoSource() {
         return err;
     }
 
+    err = source->setMaxAcquiredBufferCount(numInputBuffers);
     CHECK_EQ(err, (status_t)OK);
+
+    mBufferQueue = source->getBufferQueue();
 
     return OK;
 }
@@ -779,6 +784,10 @@ status_t WifiDisplaySource::PlaybackSession::addAudioSource(bool usePCMAudio) {
     ALOGW("Unable to instantiate audio source");
 
     return OK;
+}
+
+sp<ISurfaceTexture> WifiDisplaySource::PlaybackSession::getSurfaceTexture() {
+    return mBufferQueue;
 }
 
 int32_t WifiDisplaySource::PlaybackSession::width() const {

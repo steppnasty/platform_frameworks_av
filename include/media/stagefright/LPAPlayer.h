@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
  * Not a Contribution, Apache license notifications and license are retained
  * for attribution purposes only.
  *
@@ -82,7 +82,6 @@ public:
     virtual bool reachedEOS(status_t *finalStatus);
 
     static int objectsAlive;
-    static bool mLpaInProgress;
 private:
     int64_t mPositionTimeMediaUs;
     int64_t mPositionTimeRealUs;
@@ -92,7 +91,6 @@ private:
     bool mPaused;
     bool mA2DPEnabled;
     int32_t mChannelMask;
-    int32_t numChannels;
     int32_t mNumOutputChannels;
     int32_t mNumInputChannels;
     int32_t mSampleRate;
@@ -150,22 +148,16 @@ private:
 
     //Declare the condition Variables and Mutex
 
-    pthread_mutex_t decoder_mutex;
+    Mutex mDecoderMutex;
 
-    pthread_mutex_t audio_sink_setup_mutex;
+    Mutex mA2dpNotificationMutex;
 
-    pthread_mutex_t a2dp_notification_mutex;
+    Condition mDecoderCv;
 
-
-
-    pthread_cond_t decoder_cv;
-
-
-    pthread_cond_t a2dp_notification_cv;
-
+    Condition mA2dpNotificationCv;
 
     // make sure Decoder thread has exited
-    void requestAndWaitForDecoderThreadExit();
+    void requestAndWaitForDecoderThreadExit_l();
 
 
     // make sure the Effects thread also exited
@@ -205,9 +197,6 @@ private:
 
     void handleA2DPSwitch();
     void onPauseTimeOut();
-
-    int64_t getMediaTimeUs_l();
-    bool seekTooClose(int64_t);
 
     sp<AudioFlingerLPAdecodeClient> AudioFlingerClient;
     friend class AudioFlingerLPAdecodeClient;
@@ -263,6 +252,7 @@ private:
         MediaPlayerBase::AudioSink *audioSink,
         void *buffer, size_t size, void *cookie);
     size_t AudioCallback(void *cookie, void *data, size_t size);
+    int64_t getMediaTimeUs_l();
 
     void convertMonoToStereo(int16_t *data, size_t size);
 

@@ -12,6 +12,25 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * This file was modified by Dolby Laboratories, Inc. The portions of the
+ * code that are surrounded by "DOLBY..." are copyrighted and
+ * licensed separately, as follows:
+ *
+ *  (C) 2011-2012 Dolby Laboratories, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
  */
 
 //#define LOG_NDEBUG 0
@@ -24,6 +43,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "jpeg.h"
 #include "SineSource.h"
 
 #include <binder/IServiceManager.h>
@@ -49,15 +69,15 @@
 #include <media/stagefright/MPEG4Writer.h>
 
 #include <private/media/VideoFrame.h>
-#include <SkBitmap.h>
-#include <SkImageEncoder.h>
 
 #include <fcntl.h>
 
 #include <gui/SurfaceTextureClient.h>
-
-#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
+
+#ifdef DOLBY_UDC
+#include <QCMediaDefs.h>
+#endif //DOLBY_UDC
 
 using namespace android;
 
@@ -611,6 +631,56 @@ static void usage(const char *me) {
     fprintf(stderr, "       -S allocate buffers from a surface\n");
     fprintf(stderr, "       -T allocate buffers from a surface texture\n");
     fprintf(stderr, "       -d(ump) filename (raw stream data to a file)\n");
+    fprintf(stderr, "       -D(ump) filename (decoded PCM data to a file)\n");
+}
+
+static void dumpCodecProfiles(const sp<IOMX>& omx, bool queryDecoders) {
+    const char *kMimeTypes[] = {
+        MEDIA_MIMETYPE_VIDEO_AVC, MEDIA_MIMETYPE_VIDEO_MPEG4,
+        MEDIA_MIMETYPE_VIDEO_H263, MEDIA_MIMETYPE_AUDIO_AAC,
+        MEDIA_MIMETYPE_AUDIO_AMR_NB, MEDIA_MIMETYPE_AUDIO_AMR_WB,
+        MEDIA_MIMETYPE_AUDIO_MPEG, MEDIA_MIMETYPE_AUDIO_G711_MLAW,
+        MEDIA_MIMETYPE_AUDIO_G711_ALAW, MEDIA_MIMETYPE_AUDIO_VORBIS,
+        MEDIA_MIMETYPE_VIDEO_VPX
+#ifdef DOLBY_UDC
+        ,
+        MEDIA_MIMETYPE_AUDIO_AC3,
+        MEDIA_MIMETYPE_AUDIO_EAC3
+#endif // DOLBY_UDC
+    };
+
+    const char *codecType = queryDecoders? "decoder" : "encoder";
+    printf("%s profiles:\n", codecType);
+
+    for (size_t k = 0; k < sizeof(kMimeTypes) / sizeof(kMimeTypes[0]); ++k) {
+        printf("type '%s':\n", kMimeTypes[k]);
+
+        Vector<CodecCapabilities> results;
+        // will retrieve hardware and software codecs
+        CHECK_EQ(QueryCodecs(omx, kMimeTypes[k],
+                             queryDecoders,
+                             &results), (status_t)OK);
+
+        for (size_t i = 0; i < results.size(); ++i) {
+            printf("  %s '%s' supports ",
+                       codecType, results[i].mComponentName.string());
+
+            if (results[i].mProfileLevels.size() == 0) {
+                    printf("NOTHING.\n");
+                    continue;
+            }
+
+            for (size_t j = 0; j < results[i].mProfileLevels.size(); ++j) {
+                const CodecProfileLevel &profileLevel =
+                     results[i].mProfileLevels[j];
+
+                printf("%s%ld/%ld", j > 0 ? ", " : "",
+                    profileLevel.mProfile, profileLevel.mLevel);
+            }
+
+            printf("\n");
+        }
+    }
 }
 
 int main(int argc, char **argv) {
@@ -624,6 +694,7 @@ int main(int argc, char **argv) {
     bool useSurfaceAlloc = false;
     bool useSurfaceTexAlloc = false;
     bool dumpStream = false;
+    bool dumpPCMStream = false;
     String8 dumpStreamFilename;
     gNumRepetitions = 1;
     gMaxNumFrames = 0;
@@ -638,7 +709,7 @@ int main(int argc, char **argv) {
     sp<LiveSession> liveSession;
 
     int res;
-    while ((res = getopt(argc, argv, "han:lm:b:ptsrow:kxSTd:")) >= 0) {
+    while ((res = getopt(argc, argv, "han:lm:b:ptsrow:kxSTd:D:")) >= 0) {
         switch (res) {
             case 'a':
             {
@@ -649,6 +720,14 @@ int main(int argc, char **argv) {
             case 'd':
             {
                 dumpStream = true;
+                dumpStreamFilename.setTo(optarg);
+                break;
+            }
+
+            case 'D':
+            {
+                dumpPCMStream = true;
+                audioOnly = true;
                 dumpStreamFilename.setTo(optarg);
                 break;
             }
@@ -778,7 +857,18 @@ int main(int argc, char **argv) {
             const char *filename = argv[k];
 
             bool failed = true;
-            CHECK_EQ(retriever->setDataSource(filename), (status_t)OK);
+
+            int fd = open(filename, O_RDONLY | O_LARGEFILE);
+            CHECK_GE(fd, 0);
+
+            off64_t fileSize = lseek64(fd, 0, SEEK_END);
+            CHECK_GE(fileSize, 0ll);
+
+            CHECK_EQ(retriever->setDataSource(fd, 0, fileSize), (status_t)OK);
+
+            close(fd);
+            fd = -1;
+
             sp<IMemory> mem =
                     retriever->getFrameAtTime(-1,
                                     MediaSource::ReadOptions::SEEK_PREVIOUS_SYNC);
@@ -789,16 +879,9 @@ int main(int argc, char **argv) {
 
                 VideoFrame *frame = (VideoFrame *)mem->pointer();
 
-                SkBitmap bitmap;
-                bitmap.setConfig(
-                        SkBitmap::kRGB_565_Config, frame->mWidth, frame->mHeight);
-
-                bitmap.setPixels((uint8_t *)frame + sizeof(VideoFrame));
-
-                CHECK(SkImageEncoder::EncodeFile(
-                            "/sdcard/out.jpg", bitmap,
-                            SkImageEncoder::kJPEG_Type,
-                            SkImageEncoder::kDefaultQuality));
+                CHECK_EQ(writeJpegFile("/sdcard/out.jpg",
+                            (uint8_t *)frame + sizeof(VideoFrame),
+                            frame->mWidth, frame->mHeight), 0);
             }
 
             {
@@ -829,46 +912,8 @@ int main(int argc, char **argv) {
 
         sp<IOMX> omx = service->getOMX();
         CHECK(omx.get() != NULL);
-
-        const char *kMimeTypes[] = {
-            MEDIA_MIMETYPE_VIDEO_AVC, MEDIA_MIMETYPE_VIDEO_MPEG4,
-            MEDIA_MIMETYPE_VIDEO_H263, MEDIA_MIMETYPE_AUDIO_AAC,
-            MEDIA_MIMETYPE_AUDIO_AMR_NB, MEDIA_MIMETYPE_AUDIO_AMR_WB,
-            MEDIA_MIMETYPE_AUDIO_MPEG, MEDIA_MIMETYPE_AUDIO_G711_MLAW,
-            MEDIA_MIMETYPE_AUDIO_G711_ALAW, MEDIA_MIMETYPE_AUDIO_VORBIS,
-            MEDIA_MIMETYPE_VIDEO_VPX
-        };
-
-        for (size_t k = 0; k < sizeof(kMimeTypes) / sizeof(kMimeTypes[0]);
-             ++k) {
-            printf("type '%s':\n", kMimeTypes[k]);
-
-            Vector<CodecCapabilities> results;
-            // will retrieve hardware and software codecs
-            CHECK_EQ(QueryCodecs(omx, kMimeTypes[k],
-                                 true, // queryDecoders
-                                 &results), (status_t)OK);
-
-            for (size_t i = 0; i < results.size(); ++i) {
-                printf("  decoder '%s' supports ",
-                       results[i].mComponentName.string());
-
-                if (results[i].mProfileLevels.size() == 0) {
-                    printf("NOTHING.\n");
-                    continue;
-                }
-
-                for (size_t j = 0; j < results[i].mProfileLevels.size(); ++j) {
-                    const CodecProfileLevel &profileLevel =
-                        results[i].mProfileLevels[j];
-
-                    printf("%s%ld/%ld", j > 0 ? ", " : "",
-                           profileLevel.mProfile, profileLevel.mLevel);
-                }
-
-                printf("\n");
-            }
-        }
+        dumpCodecProfiles(omx, true /* queryDecoders */);
+        dumpCodecProfiles(omx, false /* queryDecoders */);
     }
 
     if (listComponents) {
@@ -1092,6 +1137,20 @@ int main(int argc, char **argv) {
             writeSourcesToMP4(mediaSources, syncInfoPresent);
         } else if (dumpStream) {
             dumpSource(mediaSource, dumpStreamFilename);
+        } else if (dumpPCMStream) {
+            OMXClient client;
+            CHECK_EQ(client.connect(), (status_t)OK);
+
+            sp<MediaSource> decSource =
+                OMXCodec::Create(
+                        client.interface(),
+                        mediaSource->getFormat(),
+                        false,
+                        mediaSource,
+                        0,
+                        0);
+
+            dumpSource(decSource, dumpStreamFilename);
         } else if (seekTest) {
             performSeekTest(mediaSource);
         } else {

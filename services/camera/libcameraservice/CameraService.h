@@ -1,7 +1,6 @@
 /*
 **
 ** Copyright (C) 2008, The Android Open Source Project
-** Copyright (C) 2008 HTC Inc.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -127,6 +126,8 @@ public:
         // CameraService's mClientLock should be acquired to access this.
         bool                            mDestructionStarted;
 
+        bool                            mLongshotEnabled;
+
         // these are initialized in the constructor.
         sp<CameraService>               mCameraService;  // immutable after constructor
         sp<ICameraClient>               mCameraClient;
@@ -134,6 +135,7 @@ public:
         int                             mCameraFacing;   // immutable after constructor
         pid_t                           mClientPid;
         pid_t                           mServicePid;     // immutable after constructor
+        int                             mBurstCnt;
 
     };
 

@@ -101,7 +101,7 @@ struct AwesomePlayer {
 
     void postAudioEOS(int64_t delayUs = 0ll);
     void postAudioSeekComplete();
-
+    void printFileName(int fd);
     status_t dump(int fd, const Vector<String16> &args) const;
 
 private:
@@ -201,9 +201,7 @@ private:
 
     bool mWatchForAudioSeekComplete;
     bool mWatchForAudioEOS;
-#ifdef QCOM_ENHANCED_AUDIO
     static int mTunnelAliveAP;
-#endif
 
     sp<TimedEventQueue::Event> mVideoEvent;
     bool mVideoEventPending;
@@ -238,6 +236,7 @@ private:
     sp<DecryptHandle> mDecryptHandle;
 
     int64_t mLastVideoTimeUs;
+    int64_t mFrameDurationUs;
     TimedTextDriver *mTextDriver;
 
     sp<WVMExtractor> mWVMExtractor;
@@ -310,9 +309,8 @@ private:
     void logOnTime(int64_t ts, int64_t clock, int64_t delta);
     void printStats();
     int64_t getTimeOfDayUs();
-#ifdef QCOM_HARDWARE
     void checkTunnelExceptions();
-#endif
+
     bool mStatistics;
 
     struct TrackStat {
@@ -354,6 +352,8 @@ private:
         int64_t mTotalTimeUs;
         int64_t mLastPausedTimeMs;
         int64_t mLastSeekToTimeMs;
+        int64_t mResumeDelayStartUs;
+        int64_t mSeekDelayStartUs;
     } mStats;
 
     status_t setVideoScalingMode(int32_t mode);
@@ -368,12 +368,10 @@ private:
 
     size_t countTracks() const;
 
-#ifdef USE_TUNNEL_MODE
     bool inSupportedTunnelFormats(const char * mime);
 
     //Flag to check if tunnel mode audio is enabled
     bool mIsTunnelAudio;
-#endif
 
     AwesomePlayer(const AwesomePlayer &);
     AwesomePlayer &operator=(const AwesomePlayer &);

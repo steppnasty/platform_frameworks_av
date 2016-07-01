@@ -23,9 +23,7 @@
 #include <media/IOMX.h>
 #include <media/stagefright/MediaBuffer.h>
 #include <media/stagefright/MediaSource.h>
-#ifdef QCOM_HARDWARE
 #include <media/stagefright/QCOMXCodec.h>
-#endif
 #include <utils/threads.h>
 
 #include <OMX_Audio.h>
@@ -104,13 +102,8 @@ struct OMXCodec : public MediaSource,
         kSupportsMultipleFramesPerInputBuffer = 1024,
         kRequiresLargerEncoderOutputBuffer    = 2048,
         kOutputBuffersAreUnreadable           = 4096,
-#ifdef QCOM_HARDWARE
         kRequiresGlobalFlush                  = 0x20000000, // 2^29
         kRequiresWMAProComponent              = 0x40000000, //2^30
-#endif
-#if defined(OMAP_ENHANCEMENT)
-	kAvoidMemcopyInputRecordingFrames     = 0x20000000,
-#endif
     };
 
     struct CodecNameAndQuirks {
@@ -138,10 +131,8 @@ private:
     // Make sure mLock is accessible to OMXCodecObserver
     friend class OMXCodecObserver;
 
-#ifdef QCOM_HARDWARE
     // QCOMXCodec can access variables of OMXCodec
     friend class QCOMXCodec;
-#endif
 
     // Call this with mLock hold
     void on_message(const omx_message &msg);
@@ -159,9 +150,7 @@ private:
     };
 
     enum {
-#ifdef QCOM_HARDWARE
         kPortIndexBoth   = -1,
-#endif
         kPortIndexInput  = 0,
         kPortIndexOutput = 1
     };
@@ -250,6 +239,9 @@ private:
     // a video encoder.
     List<int64_t> mDecodingTimeList;
 
+    bool mInterlaceFormatDetected;
+    int32_t mInterlaceFrame;
+
     OMXCodec(const sp<IOMX> &omx, IOMX::node_id node,
              uint32_t quirks, uint32_t flags,
              bool isEncoder, const char *mime, const char *componentName,
@@ -267,12 +259,9 @@ private:
             int32_t numChannels, int32_t sampleRate, int32_t bitRate,
             int32_t aacProfile, bool isADTS);
 
-    void setG711Format(int32_t numChannels);
-
-#ifdef QCOM_HARDWARE
     void setEVRCFormat( int32_t sampleRate, int32_t numChannels, int32_t bitRate);
+    void setG711Format(int32_t numChannels);
     void setQCELPFormat( int32_t sampleRate, int32_t numChannels, int32_t bitRate);
-#endif
 
     status_t setVideoPortFormatType(
             OMX_U32 portIndex,
@@ -315,9 +304,6 @@ private:
 
     status_t allocateBuffers();
     status_t allocateBuffersOnPort(OMX_U32 portIndex);
-#ifdef USE_SAMSUNG_COLORFORMAT
-    void setNativeWindowColorFormat(OMX_COLOR_FORMATTYPE &eNativeColorFormat);
-#endif
     status_t allocateOutputBuffersFromNativeWindow();
 
     status_t queueBufferToNativeWindow(BufferInfo *info);
@@ -371,9 +357,6 @@ private:
     void dumpPortStatus(OMX_U32 portIndex);
 
     status_t configureCodec(const sp<MetaData> &meta);
-#if defined(OMAP_ENHANCEMENT)
-    void restorePatchedDataPointer(BufferInfo *info);
-#endif
 
     status_t applyRotation();
     status_t waitForBufferFilled_l();
@@ -388,13 +371,11 @@ private:
 
     OMXCodec(const OMXCodec &);
     OMXCodec &operator=(const OMXCodec &);
-
-#ifdef QCOM_HARDWARE
     status_t setWMAFormat(const sp<MetaData> &inputFormat);
     void setAC3Format(int32_t numChannels, int32_t sampleRate);
-    bool mNumBFrames;
-#endif
 
+    bool mNumBFrames;
+    bool mInSmoothStreamingMode;
 };
 
 struct CodecCapabilities {

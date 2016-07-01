@@ -50,17 +50,8 @@ LOCAL_C_INCLUDES :=                                                 \
     $(TOP)/frameworks/av/media/libstagefright/rtsp                  \
     $(TOP)/frameworks/av/media/libstagefright/wifi-display          \
     $(TOP)/frameworks/native/include/media/openmax                  \
-    $(TOP)/external/tremolo/Tremolo
-
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-    ifeq ($(TARGET_QCOM_MEDIA_VARIANT),caf)
-    LOCAL_C_INCLUDES += \
-            $(TOP)/hardware/qcom/media-caf/mm-core/inc
-    else
-    LOCAL_C_INCLUDES += \
-            $(TOP)/hardware/qcom/media/mm-core/inc
-    endif
-endif
+    $(TOP)/external/tremolo/Tremolo                                 \
+    $(TOP)/hardware/qcom/media/mm-core/inc
 
 LOCAL_MODULE:= libmediaplayerservice
 
