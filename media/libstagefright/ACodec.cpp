@@ -62,7 +62,11 @@
 #endif //DOLBY_UDC
 namespace android {
 
+#ifdef USE_SMOOTH_STREAMING
 static const bool isSmoothStreamingEnabled = true;
+#else
+static const bool isSmoothStreamingEnabled = false;
+#endif
 
 template<class T>
 static void InitOMXParams(T *params) {

@@ -20,6 +20,10 @@
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
+ifeq ($(BOARD_USES_SMOOTH_STREAMING),true)
+    LOCAL_CFLAGS += -DUSE_SMOOTH_STREAMING
+endif
+
 ifeq ($(BOARD_USES_ALSA_AUDIO),true)
     ifeq ($(call is-chipset-in-board-platform,msm8960),true)
         LOCAL_CFLAGS += -DUSE_TUNNEL_MODE

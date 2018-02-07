@@ -75,7 +75,11 @@
 #include "include/QCUtilityClass.h"
 namespace android {
 
+#ifdef USE_SMOOTH_STREAMING
+static const bool isSmoothStreamingEnabled = true;
+#else
 static const bool isSmoothStreamingEnabled = false;
+#endif
 
 // Treat time out as an error if we have not received any output
 // buffers after 3 seconds.
